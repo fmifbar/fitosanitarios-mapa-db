@@ -43,6 +43,13 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
         prod = datos["producto"]
         num_reg = prod.get("num_registro")
         if not num_reg:
+            # Fallback a partir del nombre de archivo (ej: Ficha_ES-01182.pdf o Ficha_19692.pdf)
+            m_fn = re.search(r'Ficha_([A-Za-z0-9\-]+)\.pdf', Path(ruta_archivo).name, re.IGNORECASE)
+            if m_fn:
+                num_reg = m_fn.group(1)
+                prod["num_registro"] = num_reg
+
+        if not num_reg:
             raise ValueError(f"No se pudo identificar el número de registro en {ruta_archivo}")
 
         # Comprobar si el producto ya existe con el mismo SHA-256 (Modo Delta)

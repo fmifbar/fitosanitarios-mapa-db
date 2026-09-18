@@ -89,8 +89,10 @@ def descargar_y_procesar_producto(prod_info: Dict[str, Any], client: httpx.Clien
         extractor = ExtractorFichaMAPA(str(pdf_destino))
         datos = extractor.procesar()
         
-        # Enriquecer datos con IdProducto oficial si no estaba
+        # Enriquecer datos con IdProducto y Num_Registro oficial si no estaba
         datos["producto"]["id_producto_mapa"] = id_prod
+        if not datos["producto"].get("num_registro"):
+            datos["producto"]["num_registro"] = num_reg
         
         # Cargar de forma relacional en la base de datos
         cargar_producto_en_bd(datos, str(pdf_destino), db_path=db_path, forzar=True)

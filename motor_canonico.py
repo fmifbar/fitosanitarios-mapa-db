@@ -164,8 +164,10 @@ class ExtractorFichaMAPA:
             "clasificacion_peligrosidad": ""
         }
 
-        # Registro
-        reg_match = re.search(r'Número de Registro:\s*([0-9]+)', texto)
+        # Registro (soportando formato nacional numérico y europeo ES-XXXXX)
+        reg_match = re.search(r'Número de Registro:\s*([A-Z0-9\-]+)', texto)
+        if not reg_match or not reg_match.group(1).strip():
+            reg_match = re.search(r'\b(ES-[0-9]{4,6})\b', texto)
         if not reg_match:
             reg_match = re.search(r'\n([0-9]{5})\n', texto)
         if reg_match:
