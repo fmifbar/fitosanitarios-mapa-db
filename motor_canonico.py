@@ -123,8 +123,14 @@ class ExtractorFichaMAPA:
                     resultado["usos"].extend(usos)
                     resultado["plazos_seguridad"].extend(plazos)
                 
+                # Condiciones Generales de Uso (página agronómica)
+                if "condiciones generales de uso" in texto_lower:
+                    cond_gen = self._extraer_condiciones_generales(texto_pagina)
+                    if cond_gen:
+                        resultado["producto"]["condiciones_generales_uso"] = cond_gen
+
                 # Página de Mitigación de riesgos / Seguridad
-                if "seguridad del aplicador" in texto_lower or "seguridad del trabajador" in texto_lower:
+                if "seguridad del aplicador" in texto_lower or "seguridad del trabajador" in texto_lower or "mitigación de riesgos en la manipulación" in texto_lower or "mitigacion de riesgos en la manipulacion" in texto_lower:
                     seg = self._extraer_seguridad(page, texto_pagina)
                     if any(seg.values()):
                         resultado["seguridad"].update(seg)
@@ -134,6 +140,12 @@ class ExtractorFichaMAPA:
                     tox = self._extraer_toxicologia(page, texto_pagina)
                     if any(tox.values()):
                         resultado["toxicologia"].update(tox)
+
+                # Otras Indicaciones Reglamentarias y Observaciones
+                if "otras indicaciones reglamentarias" in texto_lower or "observaciones:" in texto_lower:
+                    obs_reg = self._extraer_observaciones_reglamentarias(texto_pagina)
+                    if obs_reg:
+                        resultado["producto"]["observaciones_reglamentarias"] = obs_reg
 
                 # Página de Mitigaciones Ambientales
                 if "mitigaci" in texto_lower or "organismos acu" in texto_lower or "artr" in texto_lower:
@@ -156,9 +168,15 @@ class ExtractorFichaMAPA:
             "nombre_comercial": "",
             "estado": "Vigente",
             "fecha_inscripcion": None,
+            "fecha_renovacion": None,
             "fecha_caducidad": None,
             "titular": "",
+            "titular_direccion": "",
             "fabricante": "",
+            "fabricante_direccion": "",
+            "envases_autorizados": None,
+            "condiciones_generales_uso": None,
+            "observaciones_reglamentarias": None,
             "composicion_texto": "",
             "tipo_formulario": "",
             "clasificacion_peligrosidad": ""
@@ -178,10 +196,14 @@ class ExtractorFichaMAPA:
         if estado_match:
             datos["estado"] = estado_match.group(1).strip()
 
-        # Fechas
+        # Fechas (Inscripción, Renovación, Caducidad)
         f_insc = re.search(r'Inscripción:\s*([0-9]{2}/[0-9]{2}/[0-9]{4})', texto)
         if f_insc:
             datos["fecha_inscripcion"] = f_insc.group(1).strip()
+
+        f_ren = re.search(r'Renovaci[oó]n:\s*([0-9]{2}/[0-9]{2}/[0-9]{4})', texto)
+        if f_ren:
+            datos["fecha_renovacion"] = f_ren.group(1).strip()
 
         f_cad = re.search(r'Caducidad:\s*([0-9]{2}/[0-9]{2}/[0-9]{4})', texto)
         if f_cad:
@@ -192,16 +214,58 @@ class ExtractorFichaMAPA:
         if nom_match:
             datos["nombre_comercial"] = nom_match.group(1).strip()
 
-        # Titular y Fabricante
-        tit_match = re.search(r'Titular\s+Fabricante\s*\n([^\n]+)', texto)
-        if tit_match:
-            linea_tit_fab = tit_match.group(1).strip()
-            partes = re.split(r'\s{3,}', linea_tit_fab)
-            if len(partes) >= 2:
-                datos["titular"] = partes[0].strip()
-                datos["fabricante"] = partes[1].strip()
-            elif len(partes) == 1:
-                datos["titular"] = partes[0].strip()
+        # Titular y Fabricante con sus direcciones completas (utilizando geometría de columnas)
+        words = p1.extract_words()
+        y_tit_header = None
+        y_comp_header = None
+        for w in words:
+            if w['text'].lower() == 'titular' and w['top'] < 300 and y_tit_header is None:
+                y_tit_header = w['top']
+            if 'composici' in w['text'].lower() and w['top'] < 400 and y_comp_header is None:
+                y_comp_header = w['top']
+
+        if y_tit_header is not None:
+            words_bloque = [w for w in words if y_tit_header + 5 < w['top'] < (y_comp_header or 360)]
+            # Agrupar en líneas por cercanía en coordenada Y
+            lineas_y = []
+            linea_cur = []
+            y_cur = None
+            for w in sorted(words_bloque, key=lambda x: (round(x['top'] / 4) * 4, x['x0'])):
+                if y_cur is None:
+                    y_cur = w['top']
+                    linea_cur.append(w)
+                elif abs(w['top'] - y_cur) <= 5:
+                    linea_cur.append(w)
+                else:
+                    lineas_y.append(linea_cur)
+                    linea_cur = [w]
+                    y_cur = w['top']
+            if linea_cur:
+                lineas_y.append(linea_cur)
+
+            tit_lineas = []
+            fab_lineas = []
+            for l in lineas_y:
+                t_w = [w['text'] for w in l if w['x0'] < 480]
+                f_w = [w['text'] for w in l if w['x0'] >= 480]
+                if t_w:
+                    tit_lineas.append(" ".join(t_w).strip())
+                if f_w:
+                    fab_lineas.append(" ".join(f_w).strip())
+
+            if tit_lineas:
+                datos["titular"] = tit_lineas[0]
+                if len(tit_lineas) > 1:
+                    datos["titular_direccion"] = ", ".join(tit_lineas[1:])
+            if fab_lineas:
+                datos["fabricante"] = fab_lineas[0]
+                if len(fab_lineas) > 1:
+                    datos["fabricante_direccion"] = ", ".join(fab_lineas[1:])
+
+        # Envases autorizados
+        env_bloque = re.search(r'Envases\s*\n(.*?)(?=Usos y Dosis Autorizados|USO\s+AGENTE|\Z)', texto, re.DOTALL | re.IGNORECASE)
+        if env_bloque:
+            datos["envases_autorizados"] = " ".join(env_bloque.group(1).split())
 
         # Composición
         comp_match = re.search(r'Composición\s*\n([^\n]+)', texto)
@@ -410,36 +474,65 @@ class ExtractorFichaMAPA:
                     uso["plazo_texto"] = p["texto"]
                     break
 
+    def _extraer_condiciones_generales(self, texto: str) -> str:
+        """Extrae la directriz agronómica completa de Condiciones Generales de Uso."""
+        m_cond = re.search(r'Condiciones Generales de Uso\s*\n*(.*?)(?=Mitigaci[oó]n de riesgos|Clasificaciones|Usos y Dosis|P[áa]gina|\Z)', texto, re.DOTALL | re.IGNORECASE)
+        if m_cond:
+            return " ".join(m_cond.group(1).split())
+        return ""
+
+    def _extraer_observaciones_reglamentarias(self, texto: str) -> str:
+        """Extrae leyendas de etiqueta, cláusulas CLP, toxicología forense y normativas."""
+        partes = []
+        m_oi = re.search(r'Otras Indicaciones reglamentarias\s*\n*(.*?)(?=OBSERVACIONES|P[áa]gina|\Z)', texto, re.DOTALL | re.IGNORECASE)
+        if m_oi:
+            partes.append("OTRAS INDICACIONES: " + " ".join(m_oi.group(1).split()))
+        m_obs = re.search(r'OBSERVACIONES:?\s*\n*(.*?)(?=P[áa]gina|\Z)', texto, re.DOTALL | re.IGNORECASE)
+        if m_obs:
+            partes.append("OBSERVACIONES: " + " ".join(m_obs.group(1).split()))
+        return " | ".join(partes) if partes else ""
+
     def _extraer_seguridad(self, page, texto: str) -> Dict[str, Any]:
-        """Extrae seguridad de aplicador, trabajador y reentrada."""
+        """Extrae seguridad de aplicador, trabajador, reentrada y frases de reducción de riesgo."""
         seg = {
             "seguridad_aplicador": "",
             "seguridad_trabajador": "",
             "plazo_reentrada": "",
+            "frases_reduccion_riesgo": "",
             "bandas_seguridad_spe3": "",
             "polinizadores_spe8": ""
         }
 
-        m_ap = re.search(r'SEGURIDAD DEL APLICADOR:?\s*\n*(.*?)(?=SEGURIDAD DEL TRABAJADOR|USO NO PROFESIONAL|NORMATIVA|PLAZO DE REENTRADA|\Z)', texto, re.DOTALL | re.IGNORECASE)
+        # 1. Seguridad del Aplicador / Operador / Mitigación en manipulación
+        m_ap = re.search(r'(?:SEGURIDAD DEL APLICADOR|SEGURIDAD DEL OPERADOR):?\s*\n*(.*?)(?=SEGURIDAD DEL TRABAJADOR|USO NO PROFESIONAL|NORMATIVA|PLAZO DE REENTRADA|\Z)', texto, re.DOTALL | re.IGNORECASE)
+        if not m_ap:
+            m_ap = re.search(r'(?:Mitigaci[oó]n de riesgos en la manipulaci[oó]n|AIRE LIBRE:?)\s*\n*(.*?)(?=SEGURIDAD DEL TRABAJADOR|USO NO PROFESIONAL|NORMATIVA|PLAZO DE REENTRADA|\Z)', texto, re.DOTALL | re.IGNORECASE)
         if m_ap:
             seg["seguridad_aplicador"] = " ".join(m_ap.group(1).split())
 
+        # 2. Seguridad del Trabajador
         m_tr = re.search(r'SEGURIDAD DEL TRABAJADOR:?\s*\n*(.*?)(?=USO NO PROFESIONAL|NORMATIVA|PLAZO DE REENTRADA|Medidas adicionales|MITIGACI|\Z)', texto, re.DOTALL | re.IGNORECASE)
         if m_tr:
             seg["seguridad_trabajador"] = " ".join(m_tr.group(1).split())
 
-        m_re = re.search(r'(?:PLAZO DE REENTRADA:?|No entrar al cultivo[^\n\.]*)(.*?)(?=Clasificaciones y Etiquetado|Clase y categor[íi]a|NORMATIVA|Medidas adicionales|MITIGACI|P[áa]gina|\Z)', texto, re.DOTALL | re.IGNORECASE)
+        # 3. Plazo de Reentrada
+        m_re = re.search(r'(?:PLAZO DE REENTRADA:?|No entrar al cultivo[^\n\.]*)(.*?)(?=FRASES ASOCIADAS|Clasificaciones y Etiquetado|Clase y categor[íi]a|NORMATIVA|Medidas adicionales|MITIGACI|P[áa]gina|\Z)', texto, re.DOTALL | re.IGNORECASE)
         if m_re:
             seg["plazo_reentrada"] = " ".join(m_re.group(0).split())
 
-        # Extracción SPe8 (Fauna / Abejas / Polinizadores)
+        # 4. Frases Asociadas a la Reducción del Riesgo (Seguridad laboral operativa)
+        m_frr = re.search(r'FRASES ASOCIADAS A LA REDUCCI[OÓ]N DEL RIESGO:?\s*\n*(.*?)(?=Clasificaciones|NORMATIVA|Medidas adicionales|MITIGACI|P[áa]gina|\Z)', texto, re.DOTALL | re.IGNORECASE)
+        if m_frr:
+            seg["frases_reduccion_riesgo"] = " ".join(m_frr.group(1).split())
+
+        # 5. Extracción SPe8 (Fauna / Abejas / Polinizadores)
         m_spe8 = re.search(r'(?:SPe\s*8:?\s*|PELIGROSO PARA LAS ABEJAS[^\n\.]*|Para proteger las abejas[^\n\.]*)(.*?)(?=Clasificaciones|NORMATIVA|MITIGACI|P[áa]gina|\.|$)', texto, re.DOTALL | re.IGNORECASE)
         if not m_spe8:
             m_spe8 = re.search(r'([^\.\n]*?(?:abejas|polinizadores|colmenas)[^\.\n]*)', texto, re.IGNORECASE)
         if m_spe8:
             seg["polinizadores_spe8"] = " ".join(m_spe8.group(0).split())
 
-        # Extracción SPe3 (Bandas de seguridad acuáticas / artrópodos)
+        # 6. Extracción SPe3 (Bandas de seguridad acuáticas / artrópodos)
         m_spe3 = re.search(r'(SPe\s*3:?[^\.\n]*)', texto, re.IGNORECASE)
         if m_spe3:
             seg["bandas_seguridad_spe3"] = " ".join(m_spe3.group(1).split())

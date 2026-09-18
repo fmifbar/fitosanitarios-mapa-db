@@ -178,12 +178,18 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
     # Asegurar que el esquema existe siempre
     cursor.executescript(DDL_ESQUEMA)
     for col_def in [
+        ("mapa_productos", "fecha_renovacion", "DATE"),
         ("mapa_productos", "fecha_cancelacion", "DATE"),
         ("mapa_productos", "fecha_limite_venta", "DATE"),
+        ("mapa_productos", "titular_direccion", "TEXT"),
+        ("mapa_productos", "fabricante_direccion", "TEXT"),
         ("mapa_productos", "fabrica", "TEXT"),
         ("mapa_productos", "otras_denominaciones", "TEXT"),
         ("mapa_productos", "envases_autorizados", "TEXT"),
+        ("mapa_productos", "condiciones_generales_uso", "TEXT"),
+        ("mapa_productos", "observaciones_reglamentarias", "TEXT"),
         ("mapa_sustancias_activas", "nombre_ue", "TEXT"),
+        ("mapa_seguridad", "frases_reduccion_riesgo", "TEXT"),
         ("mapa_usos", "ambito", "TEXT"),
         ("mapa_usos", "tipo_usuario", "TEXT"),
         ("mapa_usos", "codigo_cultivo", "TEXT"),

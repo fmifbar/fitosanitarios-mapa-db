@@ -14,12 +14,17 @@ CREATE TABLE IF NOT EXISTS mapa_productos (
     fabricante TEXT,                            -- Entidad fabricante
     estado TEXT NOT NULL DEFAULT 'Vigente',     -- 'Vigente', 'Caducado', 'Cancelado'
     fecha_inscripcion DATE,
+    fecha_renovacion DATE,                      -- Fecha de renovación administrativa del registro
     fecha_caducidad DATE,
     fecha_cancelacion DATE,                     -- Fecha oficial de cancelación del registro
     fecha_limite_venta DATE,                    -- Fecha límite de comercialización y venta
+    titular_direccion TEXT,                     -- Dirección postal y sede del titular
+    fabricante_direccion TEXT,                  -- Dirección postal y sede del fabricante
     fabrica TEXT,                               -- Fábrica / Instalación de producción química
     otras_denominaciones TEXT,                  -- Nombres comerciales secundarios / Marcas blancas
     envases_autorizados TEXT,                   -- Formatos y presentaciones comerciales autorizadas
+    condiciones_generales_uso TEXT,             -- Directrices agronómicas, técnicas y restricciones generales
+    observaciones_reglamentarias TEXT,          -- Normativa, orden toxicológica, SIGFITO y leyendas de etiqueta
     tipo_formulario TEXT,                       -- Polvo mojable (WP), Suspensión concentrada (SC), etc.
     clasificacion_peligrosidad TEXT,            -- Pictogramas CLP / Frases H
     pdf_url TEXT,                               -- URL de descarga en la web del ministerio
@@ -97,6 +102,7 @@ CREATE TABLE IF NOT EXISTS mapa_seguridad (
     seguridad_aplicador TEXT,                  -- Ropa 6-B, mascarilla FFP2, guantes...
     seguridad_trabajador TEXT,
     plazo_reentrada TEXT,                      -- 'No entrar hasta secado' o días específicos
+    frases_reduccion_riesgo TEXT,              -- Ropa de trabajo, follaje húmedo, labores mecánicas...
     bandas_seguridad_spe3 TEXT,                -- 5m, 10m o 30m a masas de agua
     polinizadores_spe8 TEXT                    -- 'No aplicar en floración / 96 horas'
 );

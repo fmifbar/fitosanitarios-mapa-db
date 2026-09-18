@@ -8,6 +8,7 @@ import os
 import sys
 import sqlite3
 import argparse
+import re
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -68,16 +69,24 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
         cursor.execute("""
             INSERT INTO mapa_productos (
                 num_registro, nombre_comercial, titular, fabricante, estado,
-                fecha_inscripcion, fecha_caducidad, tipo_formulario,
-                clasificacion_peligrosidad, pdf_sha256, sincronizado_en
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                fecha_inscripcion, fecha_renovacion, fecha_caducidad,
+                titular_direccion, fabricante_direccion, envases_autorizados,
+                condiciones_generales_uso, observaciones_reglamentarias,
+                tipo_formulario, clasificacion_peligrosidad, pdf_sha256, sincronizado_en
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(num_registro) DO UPDATE SET
                 nombre_comercial = excluded.nombre_comercial,
                 titular = excluded.titular,
                 fabricante = excluded.fabricante,
                 estado = excluded.estado,
                 fecha_inscripcion = excluded.fecha_inscripcion,
+                fecha_renovacion = COALESCE(excluded.fecha_renovacion, mapa_productos.fecha_renovacion),
                 fecha_caducidad = excluded.fecha_caducidad,
+                titular_direccion = COALESCE(excluded.titular_direccion, mapa_productos.titular_direccion),
+                fabricante_direccion = COALESCE(excluded.fabricante_direccion, mapa_productos.fabricante_direccion),
+                envases_autorizados = COALESCE(excluded.envases_autorizados, mapa_productos.envases_autorizados),
+                condiciones_generales_uso = COALESCE(excluded.condiciones_generales_uso, mapa_productos.condiciones_generales_uso),
+                observaciones_reglamentarias = COALESCE(excluded.observaciones_reglamentarias, mapa_productos.observaciones_reglamentarias),
                 tipo_formulario = excluded.tipo_formulario,
                 clasificacion_peligrosidad = excluded.clasificacion_peligrosidad,
                 pdf_sha256 = excluded.pdf_sha256,
@@ -89,7 +98,13 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
             prod.get("fabricante", ""),
             prod.get("estado", "Vigente"),
             prod.get("fecha_inscripcion"),
+            prod.get("fecha_renovacion"),
             prod.get("fecha_caducidad"),
+            prod.get("titular_direccion") or None,
+            prod.get("fabricante_direccion") or None,
+            prod.get("envases_autorizados") or None,
+            prod.get("condiciones_generales_uso") or None,
+            prod.get("observaciones_reglamentarias") or None,
             prod.get("tipo_formulario", ""),
             prod.get("clasificacion_peligrosidad", ""),
             datos["sha256"]
@@ -183,13 +198,17 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
         if any(seg.values()):
             cursor.execute("""
                 INSERT OR REPLACE INTO mapa_seguridad (
-                    producto_id, seguridad_aplicador, seguridad_trabajador, plazo_reentrada
-                ) VALUES (?, ?, ?, ?);
+                    producto_id, seguridad_aplicador, seguridad_trabajador, plazo_reentrada,
+                    frases_reduccion_riesgo, bandas_seguridad_spe3, polinizadores_spe8
+                ) VALUES (?, ?, ?, ?, ?, ?, ?);
             """, (
                 producto_id,
                 seg.get("seguridad_aplicador", ""),
                 seg.get("seguridad_trabajador", ""),
-                seg.get("plazo_reentrada", "")
+                seg.get("plazo_reentrada", ""),
+                seg.get("frases_reduccion_riesgo", ""),
+                seg.get("bandas_seguridad_spe3", ""),
+                seg.get("polinizadores_spe8", "")
             ))
 
         # 6. Toxicología y Clasificación CLP

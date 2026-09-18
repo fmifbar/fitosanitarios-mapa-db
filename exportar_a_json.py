@@ -40,9 +40,11 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
 
     # Cargar todos los productos
     productos_rows = c.execute("""
-        SELECT id, num_registro, nombre_comercial, titular, fabricante, estado,
-               fecha_inscripcion, fecha_caducidad, fecha_cancelacion, fecha_limite_venta,
+        SELECT id, num_registro, nombre_comercial, titular, titular_direccion,
+               fabricante, fabricante_direccion, estado,
+               fecha_inscripcion, fecha_renovacion, fecha_caducidad, fecha_cancelacion, fecha_limite_venta,
                fabrica, otras_denominaciones, envases_autorizados,
+               condiciones_generales_uso, observaciones_reglamentarias,
                tipo_formulario, sincronizado_en
         FROM mapa_productos ORDER BY id ASC
     """).fetchall()
@@ -73,6 +75,7 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
             "seguridad_aplicador": (r["seguridad_aplicador"] or "").replace("\uf0fc", "- ").replace("\uf0a7", "- "),
             "seguridad_trabajador": (r["seguridad_trabajador"] or "").replace("\uf0fc", "- ").replace("\uf0a7", "- "),
             "plazo_reentrada": (r["plazo_reentrada"] or "").replace("\uf0fc", "- ").replace("\uf0a7", "- "),
+            "frases_reduccion_riesgo": (r["frases_reduccion_riesgo"] if "frases_reduccion_riesgo" in r.keys() and r["frases_reduccion_riesgo"] else "").replace("\uf0fc", "- ").replace("\uf0a7", "- "),
             "bandas_seguridad_spe3": r["bandas_seguridad_spe3"] if "bandas_seguridad_spe3" in r.keys() else None,
             "spe8_abejas_polinizadores": r["polinizadores_spe8"] if "polinizadores_spe8" in r.keys() else None
         }
@@ -153,12 +156,17 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
             "num_registro": p["num_registro"],
             "nombre_comercial": p["nombre_comercial"],
             "titular": p["titular"],
+            "titular_direccion": p["titular_direccion"],
             "fabricante": p["fabricante"],
+            "fabricante_direccion": p["fabricante_direccion"],
             "fabrica": p["fabrica"],
             "otras_denominaciones": [d.strip() for d in p["otras_denominaciones"].split(",") if d.strip()] if p["otras_denominaciones"] else [],
             "envases_autorizados": p["envases_autorizados"],
+            "condiciones_generales_uso": p["condiciones_generales_uso"],
+            "observaciones_reglamentarias": p["observaciones_reglamentarias"],
             "estado": p["estado"],
             "fecha_inscripcion": p["fecha_inscripcion"],
+            "fecha_renovacion": p["fecha_renovacion"],
             "fecha_caducidad": p["fecha_caducidad"],
             "fecha_cancelacion": p["fecha_cancelacion"],
             "fecha_limite_venta": p["fecha_limite_venta"],
