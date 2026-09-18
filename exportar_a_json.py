@@ -9,6 +9,7 @@ import json
 import time
 import sqlite3
 from pathlib import Path
+from catalogo_clp import traducir_ghs, traducir_h, traducir_p
 
 if sys.stdout.encoding != 'utf-8':
     try:
@@ -79,9 +80,9 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
         ghs_list = [g.strip() for g in (r["pictogramas_ghs"] or "").split(",") if g.strip()]
         tox_map[r["producto_id"]] = {
             "palabra_advertencia": r["palabra_advertencia"],
-            "pictogramas_ghs": ghs_list,
-            "indicaciones_h": h_list,
-            "consejos_p": p_list,
+            "pictogramas_ghs": [traducir_ghs(g) for g in ghs_list],
+            "indicaciones_h": [traducir_h(h) for h in h_list],
+            "consejos_p": [traducir_p(p) for p in p_list],
             "incompatibilidades_mezclas": r["incompatibilidades_mezclas"],
             "gestion_envases": r["gestion_envases"]
         }
