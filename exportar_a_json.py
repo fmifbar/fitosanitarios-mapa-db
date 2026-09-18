@@ -41,7 +41,8 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
     # Cargar todos los productos
     productos_rows = c.execute("""
         SELECT id, num_registro, nombre_comercial, titular, fabricante, estado,
-               fecha_inscripcion, fecha_caducidad, tipo_formulario, sincronizado_en
+               fecha_inscripcion, fecha_caducidad, fecha_cancelacion, fecha_limite_venta,
+               tipo_formulario, sincronizado_en
         FROM mapa_productos ORDER BY id ASC
     """).fetchall()
 
@@ -111,17 +112,19 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
     for r in c.execute("""
         SELECT producto_id, cultivo_nombre, agente_nombre, dosis_min, dosis_max,
                dosis_unidad, dosis_original, num_aplicaciones_max, intervalo_min_dias,
-               volumen_caldo, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
+               volumen_caldo, ambito, tipo_usuario, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
         FROM mapa_usos ORDER BY id ASC
     """).fetchall():
         usos_map.setdefault(r["producto_id"], []).append({
             "cultivo": r["cultivo_nombre"],
             "plaga": r["agente_nombre"],
+            "ambito_de_uso": r["ambito"],
+            "tipo_usuario": r["tipo_usuario"],
             "dosis_min": r["dosis_min"],
             "dosis_max": r["dosis_max"],
             "dosis_unidad": r["dosis_unidad"],
             "dosis_original": r["dosis_original"],
-            "num_aplicaciones_max": r["num_aplicaciones_max"],
+            "aplicacion_max": r["num_aplicaciones_max"],
             "intervalo_min_dias": r["intervalo_min_dias"],
             "volumen_caldo": r["volumen_caldo"],
             "condiciones_especificas": r["condiciones_especificas"],
@@ -143,6 +146,8 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
             "estado": p["estado"],
             "fecha_inscripcion": p["fecha_inscripcion"],
             "fecha_caducidad": p["fecha_caducidad"],
+            "fecha_cancelacion": p["fecha_cancelacion"],
+            "fecha_limite_venta": p["fecha_limite_venta"],
             "tipo_formulario": p["tipo_formulario"],
             "sincronizado_en": p["sincronizado_en"],
             "composicion": comp_map.get(pid, []),

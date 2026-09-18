@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS mapa_productos (
     estado TEXT NOT NULL DEFAULT 'Vigente',     -- 'Vigente', 'Caducado', 'Cancelado'
     fecha_inscripcion DATE,
     fecha_caducidad DATE,
+    fecha_cancelacion DATE,                     -- Fecha oficial de cancelación del registro
+    fecha_limite_venta DATE,                    -- Fecha límite de comercialización y venta
     tipo_formulario TEXT,                       -- Polvo mojable (WP), Suspensión concentrada (SC), etc.
     clasificacion_peligrosidad TEXT,            -- Pictogramas CLP / Frases H
     pdf_url TEXT,                               -- URL de descarga en la web del ministerio
@@ -53,6 +55,8 @@ CREATE TABLE IF NOT EXISTS mapa_usos (
     num_aplicaciones_max INTEGER,               -- Número máximo de aplicaciones por ciclo/año
     intervalo_min_dias INTEGER,                 -- Días mínimos entre pases
     volumen_caldo TEXT,                         -- Rango de caldo (ej: '500-1000 l/ha')
+    ambito TEXT,                                -- Ámbito (ej: 'Aire libre', 'Invernadero', 'No Agrario')
+    tipo_usuario TEXT,                          -- 'Profesional', 'No Profesional'
     condiciones_especificas TEXT,               -- Observaciones legales de la fila
     plazo_seguridad_dias INTEGER DEFAULT 0,     -- Plazo de seguridad asignado (0 si es NP)
     plazo_seguridad_texto TEXT                  -- 'NO PROCEDE', '3', '7', etc.
