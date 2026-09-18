@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# PyInstaller / Entornos de compilación
+build/
+dist/
+*.spec
+DescargadorFitosanitariosMAPA.exe
+
+# Caché temporal de descargas de PDFs pesados
+cache_pdfs/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
