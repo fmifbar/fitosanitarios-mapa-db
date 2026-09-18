@@ -60,6 +60,8 @@ def ver_estadisticas():
     total_prod = c.execute("SELECT COUNT(*) FROM mapa_productos").fetchone()[0]
     total_vigentes = c.execute("SELECT COUNT(*) FROM mapa_productos WHERE estado = 'Vigente'").fetchone()[0]
     total_usos = c.execute("SELECT COUNT(*) FROM mapa_usos").fetchone()[0]
+    total_bbch = c.execute("SELECT COUNT(*) FROM mapa_usos WHERE bbch IS NOT NULL AND bbch != ''").fetchone()[0]
+    total_siex = c.execute("SELECT COUNT(*) FROM mapa_usos WHERE codigo_cultivo IS NOT NULL AND codigo_cultivo != ''").fetchone()[0]
     total_sust = c.execute("SELECT COUNT(*) FROM mapa_sustancias_activas").fetchone()[0]
     total_seg = c.execute("SELECT COUNT(*) FROM mapa_seguridad").fetchone()[0]
     total_tox = c.execute("SELECT COUNT(*) FROM mapa_toxicologia").fetchone()[0]
@@ -71,10 +73,12 @@ def ver_estadisticas():
     print(f"  • 1. Productos Registrados:        {total_prod:,}")
     print(f"  • 2. Materias Activas Normalizadas: {total_sust:,}")
     print(f"  • 3. Usos Agronómicos Indexados:   {total_usos:,}")
-    print(f"  • 4. Plazos de Seguridad:          {total_plazos:,}")
-    print(f"  • 5. Fichas con Seguridad (EPIs):  {total_seg:,}")
-    print(f"  • 6. Fichas con Toxicología (CLP): {total_tox:,}")
-    print(f"  • 7. Mitigaciones Ambientales:     {total_mit:,}")
+    print(f"  • 4. Códigos SIEX Oficiales:       {total_siex:,}")
+    print(f"  • 5. Estadios BBCH / Cuaderno CUE: {total_bbch:,}")
+    print(f"  • 6. Plazos de Seguridad:          {total_plazos:,}")
+    print(f"  • 7. Fichas con Seguridad (EPIs):  {total_seg:,}")
+    print(f"  • 8. Fichas con Toxicología (CLP): {total_tox:,}")
+    print(f"  • 9. Mitigaciones Ambientales:     {total_mit:,}")
     
     ultimos = c.execute("SELECT nombre_comercial, num_registro, titular FROM mapa_productos ORDER BY id DESC LIMIT 3").fetchall()
     if ultimos:

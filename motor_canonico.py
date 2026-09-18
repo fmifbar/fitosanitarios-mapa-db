@@ -432,6 +432,18 @@ class ExtractorFichaMAPA:
         if m_re:
             seg["plazo_reentrada"] = " ".join(m_re.group(0).split())
 
+        # Extracción SPe8 (Fauna / Abejas / Polinizadores)
+        m_spe8 = re.search(r'(?:SPe\s*8:?\s*|PELIGROSO PARA LAS ABEJAS[^\n\.]*|Para proteger las abejas[^\n\.]*)(.*?)(?=Clasificaciones|NORMATIVA|MITIGACI|P[áa]gina|\.|$)', texto, re.DOTALL | re.IGNORECASE)
+        if not m_spe8:
+            m_spe8 = re.search(r'([^\.\n]*?(?:abejas|polinizadores|colmenas)[^\.\n]*)', texto, re.IGNORECASE)
+        if m_spe8:
+            seg["polinizadores_spe8"] = " ".join(m_spe8.group(0).split())
+
+        # Extracción SPe3 (Bandas de seguridad acuáticas / artrópodos)
+        m_spe3 = re.search(r'(SPe\s*3:?[^\.\n]*)', texto, re.IGNORECASE)
+        if m_spe3:
+            seg["bandas_seguridad_spe3"] = " ".join(m_spe3.group(1).split())
+
         return seg
 
     def _extraer_toxicologia(self, page, texto: str) -> Dict[str, Any]:

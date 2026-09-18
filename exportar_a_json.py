@@ -42,6 +42,7 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
     productos_rows = c.execute("""
         SELECT id, num_registro, nombre_comercial, titular, fabricante, estado,
                fecha_inscripcion, fecha_caducidad, fecha_cancelacion, fecha_limite_venta,
+               fabrica, otras_denominaciones, envases_autorizados,
                tipo_formulario, sincronizado_en
         FROM mapa_productos ORDER BY id ASC
     """).fetchall()
@@ -52,12 +53,13 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
     # Pre-cargar composiciones
     comp_map = {}
     for r in c.execute("""
-        SELECT c.producto_id, s.nombre, c.concentracion, c.unidad, s.numero_cas, s.codigo_frac_irac
+        SELECT c.producto_id, s.nombre, s.nombre_ue, c.concentracion, c.unidad, s.numero_cas, s.codigo_frac_irac
         FROM mapa_producto_composicion c
         JOIN mapa_sustancias_activas s ON c.sustancia_id = s.id
     """).fetchall():
         comp_map.setdefault(r["producto_id"], []).append({
             "sustancia_activa": r["nombre"],
+            "nombre_sustancia_ue": r["nombre_ue"],
             "concentracion": r["concentracion"],
             "unidad": r["unidad"],
             "numero_cas": r["numero_cas"],
@@ -70,7 +72,9 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
         seg_map[r["producto_id"]] = {
             "seguridad_aplicador": (r["seguridad_aplicador"] or "").replace("\uf0fc", "- ").replace("\uf0a7", "- "),
             "seguridad_trabajador": (r["seguridad_trabajador"] or "").replace("\uf0fc", "- ").replace("\uf0a7", "- "),
-            "plazo_reentrada": (r["plazo_reentrada"] or "").replace("\uf0fc", "- ").replace("\uf0a7", "- ")
+            "plazo_reentrada": (r["plazo_reentrada"] or "").replace("\uf0fc", "- ").replace("\uf0a7", "- "),
+            "bandas_seguridad_spe3": r["bandas_seguridad_spe3"] if "bandas_seguridad_spe3" in r.keys() else None,
+            "spe8_abejas_polinizadores": r["polinizadores_spe8"] if "polinizadores_spe8" in r.keys() else None
         }
 
     # Pre-cargar toxicología
@@ -110,14 +114,19 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
     # Pre-cargar usos
     usos_map = {}
     for r in c.execute("""
-        SELECT producto_id, cultivo_nombre, agente_nombre, dosis_min, dosis_max,
-               dosis_unidad, dosis_original, num_aplicaciones_max, intervalo_min_dias,
-               volumen_caldo, ambito, tipo_usuario, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
+        SELECT producto_id, cultivo_nombre, agente_nombre, codigo_cultivo, codigo_agente,
+               dosis_min, dosis_max, dosis_unidad, dosis_original, num_aplicaciones_max, intervalo_min_dias,
+               volumen_caldo, volumen_caldo_min, volumen_caldo_max, metodo_aplicacion, bbch,
+               ambito, tipo_usuario, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
         FROM mapa_usos ORDER BY id ASC
     """).fetchall():
         usos_map.setdefault(r["producto_id"], []).append({
             "cultivo": r["cultivo_nombre"],
+            "codigo_cultivo": r["codigo_cultivo"],
             "plaga": r["agente_nombre"],
+            "codigo_agente": r["codigo_agente"],
+            "bbch": r["bbch"],
+            "metodo_aplicacion": r["metodo_aplicacion"],
             "ambito_de_uso": r["ambito"],
             "tipo_usuario": r["tipo_usuario"],
             "dosis_min": r["dosis_min"],
@@ -127,6 +136,8 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
             "aplicacion_max": r["num_aplicaciones_max"],
             "intervalo_min_dias": r["intervalo_min_dias"],
             "volumen_caldo": r["volumen_caldo"],
+            "volumen_caldo_min": r["volumen_caldo_min"],
+            "volumen_caldo_max": r["volumen_caldo_max"],
             "condiciones_especificas": r["condiciones_especificas"],
             "plazo_seguridad_dias": r["plazo_seguridad_dias"],
             "plazo_seguridad_texto": r["plazo_seguridad_texto"]
@@ -143,6 +154,9 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
             "nombre_comercial": p["nombre_comercial"],
             "titular": p["titular"],
             "fabricante": p["fabricante"],
+            "fabrica": p["fabrica"],
+            "otras_denominaciones": [d.strip() for d in p["otras_denominaciones"].split(",") if d.strip()] if p["otras_denominaciones"] else [],
+            "envases_autorizados": p["envases_autorizados"],
             "estado": p["estado"],
             "fecha_inscripcion": p["fecha_inscripcion"],
             "fecha_caducidad": p["fecha_caducidad"],

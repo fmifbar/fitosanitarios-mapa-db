@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS mapa_productos (
     fecha_caducidad DATE,
     fecha_cancelacion DATE,
     fecha_limite_venta DATE,
+    fabrica TEXT,
+    otras_denominaciones TEXT,
+    envases_autorizados TEXT,
     tipo_formulario TEXT,
     clasificacion_peligrosidad TEXT,
     pdf_url TEXT,
@@ -49,6 +52,7 @@ CREATE TABLE IF NOT EXISTS mapa_productos (
 CREATE TABLE IF NOT EXISTS mapa_sustancias_activas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL UNIQUE,
+    nombre_ue TEXT,
     numero_cas TEXT,
     codigo_frac_irac TEXT
 );
@@ -66,7 +70,9 @@ CREATE TABLE IF NOT EXISTS mapa_usos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     producto_id INTEGER NOT NULL REFERENCES mapa_productos(id) ON DELETE CASCADE,
     cultivo_nombre TEXT NOT NULL,
+    codigo_cultivo TEXT,
     agente_nombre TEXT NOT NULL,
+    codigo_agente TEXT,
     dosis_min REAL,
     dosis_max REAL,
     dosis_unidad TEXT,
@@ -74,8 +80,12 @@ CREATE TABLE IF NOT EXISTS mapa_usos (
     num_aplicaciones_max INTEGER,
     intervalo_min_dias INTEGER,
     volumen_caldo TEXT,
+    volumen_caldo_min REAL,
+    volumen_caldo_max REAL,
     ambito TEXT,
     tipo_usuario TEXT,
+    metodo_aplicacion TEXT,
+    bbch TEXT,
     condiciones_especificas TEXT,
     plazo_seguridad_dias INTEGER DEFAULT 0,
     plazo_seguridad_texto TEXT
@@ -170,8 +180,18 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
     for col_def in [
         ("mapa_productos", "fecha_cancelacion", "DATE"),
         ("mapa_productos", "fecha_limite_venta", "DATE"),
+        ("mapa_productos", "fabrica", "TEXT"),
+        ("mapa_productos", "otras_denominaciones", "TEXT"),
+        ("mapa_productos", "envases_autorizados", "TEXT"),
+        ("mapa_sustancias_activas", "nombre_ue", "TEXT"),
         ("mapa_usos", "ambito", "TEXT"),
-        ("mapa_usos", "tipo_usuario", "TEXT")
+        ("mapa_usos", "tipo_usuario", "TEXT"),
+        ("mapa_usos", "codigo_cultivo", "TEXT"),
+        ("mapa_usos", "codigo_agente", "TEXT"),
+        ("mapa_usos", "volumen_caldo_min", "REAL"),
+        ("mapa_usos", "volumen_caldo_max", "REAL"),
+        ("mapa_usos", "metodo_aplicacion", "TEXT"),
+        ("mapa_usos", "bbch", "TEXT")
     ]:
         try:
             cursor.execute(f"ALTER TABLE {col_def[0]} ADD COLUMN {col_def[1]} {col_def[2]};")
@@ -204,12 +224,15 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
         f_caduc = dp.get("Fecha_Caducidad", "").replace("/", "-") if dp.get("Fecha_Caducidad") else None
         f_cancel = dp.get("Fecha_Cancelacion", "").replace("/", "-").split("T")[0] if dp.get("Fecha_Cancelacion") else None
         f_lim_venta = dp.get("Fecha_LimiteVenta", "").replace("/", "-").split("T")[0] if dp.get("Fecha_LimiteVenta") else None
+        fabrica = dp.get("Fabrica", "").strip() or None
+        otras_denoms = [d.get("Nombre_Origen", "").strip() for d in p.get("OTRASDENOMINACIONES", []) if d.get("Nombre_Origen")]
+        otras_denoms_str = ", ".join(otras_denoms) if otras_denoms else None
 
         # 1. Insertar producto
         cursor.execute("""
             INSERT INTO mapa_productos 
-            (num_registro, nombre_comercial, titular, fabricante, estado, fecha_inscripcion, fecha_caducidad, fecha_cancelacion, fecha_limite_venta, tipo_formulario, sincronizado_en)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            (num_registro, nombre_comercial, titular, fabricante, estado, fecha_inscripcion, fecha_caducidad, fecha_cancelacion, fecha_limite_venta, fabrica, otras_denominaciones, tipo_formulario, sincronizado_en)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(num_registro) DO UPDATE SET
                 nombre_comercial = excluded.nombre_comercial,
                 titular = excluded.titular,
@@ -219,9 +242,11 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
                 fecha_caducidad = excluded.fecha_caducidad,
                 fecha_cancelacion = excluded.fecha_cancelacion,
                 fecha_limite_venta = excluded.fecha_limite_venta,
+                fabrica = excluded.fabrica,
+                otras_denominaciones = excluded.otras_denominaciones,
                 tipo_formulario = excluded.tipo_formulario,
                 sincronizado_en = CURRENT_TIMESTAMP;
-        """, (num_reg, nombre, titular, fabricante, estado, f_inscrip, f_caduc, f_cancel, f_lim_venta, formulado))
+        """, (num_reg, nombre, titular, fabricante, estado, f_inscrip, f_caduc, f_cancel, f_lim_venta, fabrica, otras_denoms_str, formulado))
 
         cursor.execute("SELECT id FROM mapa_productos WHERE num_registro = ?", (num_reg,))
         prod_id = cursor.fetchone()[0]
@@ -235,7 +260,12 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
             nom_sust = c.get("Nombre Sustancia", "").strip().upper()
             if not nom_sust:
                 continue
-            cursor.execute("INSERT OR IGNORE INTO mapa_sustancias_activas (nombre) VALUES (?)", (nom_sust,))
+            nom_ue = c.get("NombreUE", "").strip() or None
+            cursor.execute("""
+                INSERT INTO mapa_sustancias_activas (nombre, nombre_ue) 
+                VALUES (?, ?)
+                ON CONFLICT(nombre) DO UPDATE SET nombre_ue = excluded.nombre_ue;
+            """, (nom_sust, nom_ue))
             cursor.execute("SELECT id FROM mapa_sustancias_activas WHERE nombre = ?", (nom_sust,))
             sust_id = cursor.fetchone()[0]
 
@@ -288,9 +318,37 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
             tipo_usuario = u.get("TipoUsuario", "").strip()
             condic = u.get("CondicionamientoEspecifico", "").strip()
 
+            codigo_cultivo = str(u.get("CodigoCultivo", "")).strip() or None
+            codigo_agente = str(u.get("CodigoAgente", "")).strip() or None
+            bbch = str(u.get("Bbch", "")).strip() or None
+            metodo_aplicacion = str(u.get("MetodoAplicacion", "")).strip() or None
+
+            vol_min = u.get("Volumen_Min")
+            vol_max = u.get("VolumenMax")
+            if (vol_min is None or vol_min == 0.0) and (vol_max is None or vol_max == 0.0) and vol_caldo:
+                m_vc = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*[-–]\s*([0-9]+(?:\.[0-9]+)?)', vol_caldo)
+                if m_vc:
+                    try:
+                        vol_min = float(m_vc.group(1))
+                        vol_max = float(m_vc.group(2))
+                    except ValueError:
+                        pass
+                else:
+                    m_single = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*(?:l|litros|kg)/ha', vol_caldo, re.IGNORECASE)
+                    if m_single:
+                        try:
+                            vol_min = float(m_single.group(1))
+                            vol_max = vol_min
+                        except ValueError:
+                            pass
+            elif vol_min == 0.0 and vol_max == 0.0:
+                vol_min = None
+                vol_max = None
+
             usos_lote.append((
                 prod_id, cultivo, agente, d_min, d_max, d_unidad, d_orig,
-                n_aplic, interv_dias, vol_caldo, ambito, tipo_usuario, condic, ps_dias, ps_texto
+                n_aplic, interv_dias, vol_caldo, ambito, tipo_usuario, condic, ps_dias, ps_texto,
+                codigo_cultivo, codigo_agente, vol_min, vol_max, metodo_aplicacion, bbch
             ))
 
         if usos_lote:
@@ -298,8 +356,9 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
                 INSERT INTO mapa_usos (
                     producto_id, cultivo_nombre, agente_nombre, dosis_min, dosis_max,
                     dosis_unidad, dosis_original, num_aplicaciones_max, intervalo_min_dias,
-                    volumen_caldo, ambito, tipo_usuario, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    volumen_caldo, ambito, tipo_usuario, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto,
+                    codigo_cultivo, codigo_agente, volumen_caldo_min, volumen_caldo_max, metodo_aplicacion, bbch
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """, usos_lote)
             total_usos += len(usos_lote)
 
