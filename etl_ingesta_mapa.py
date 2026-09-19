@@ -69,25 +69,27 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
         cursor.execute("""
             INSERT INTO mapa_productos (
                 num_registro, nombre_comercial, titular, fabricante, estado,
-                fecha_inscripcion, fecha_renovacion, fecha_caducidad,
+                fecha_inscripcion, fecha_renovacion, fecha_caducidad, fecha_cancelacion, fecha_limite_venta,
                 titular_direccion, fabricante_direccion, envases_autorizados,
                 condiciones_generales_uso, observaciones_reglamentarias,
                 tipo_formulario, clasificacion_peligrosidad, pdf_sha256, sincronizado_en
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(num_registro) DO UPDATE SET
-                nombre_comercial = excluded.nombre_comercial,
-                titular = excluded.titular,
-                fabricante = excluded.fabricante,
+                nombre_comercial = CASE WHEN excluded.nombre_comercial != '' THEN excluded.nombre_comercial ELSE mapa_productos.nombre_comercial END,
+                titular = CASE WHEN excluded.titular != '' THEN excluded.titular ELSE mapa_productos.titular END,
+                fabricante = CASE WHEN excluded.fabricante != '' THEN excluded.fabricante ELSE mapa_productos.fabricante END,
                 estado = excluded.estado,
-                fecha_inscripcion = excluded.fecha_inscripcion,
+                fecha_inscripcion = COALESCE(excluded.fecha_inscripcion, mapa_productos.fecha_inscripcion),
                 fecha_renovacion = COALESCE(excluded.fecha_renovacion, mapa_productos.fecha_renovacion),
-                fecha_caducidad = excluded.fecha_caducidad,
+                fecha_caducidad = COALESCE(excluded.fecha_caducidad, mapa_productos.fecha_caducidad),
+                fecha_cancelacion = COALESCE(excluded.fecha_cancelacion, mapa_productos.fecha_cancelacion),
+                fecha_limite_venta = COALESCE(excluded.fecha_limite_venta, mapa_productos.fecha_limite_venta),
                 titular_direccion = COALESCE(excluded.titular_direccion, mapa_productos.titular_direccion),
                 fabricante_direccion = COALESCE(excluded.fabricante_direccion, mapa_productos.fabricante_direccion),
                 envases_autorizados = COALESCE(excluded.envases_autorizados, mapa_productos.envases_autorizados),
                 condiciones_generales_uso = COALESCE(excluded.condiciones_generales_uso, mapa_productos.condiciones_generales_uso),
                 observaciones_reglamentarias = COALESCE(excluded.observaciones_reglamentarias, mapa_productos.observaciones_reglamentarias),
-                tipo_formulario = excluded.tipo_formulario,
+                tipo_formulario = CASE WHEN excluded.tipo_formulario != '' THEN excluded.tipo_formulario ELSE mapa_productos.tipo_formulario END,
                 clasificacion_peligrosidad = excluded.clasificacion_peligrosidad,
                 pdf_sha256 = excluded.pdf_sha256,
                 sincronizado_en = CURRENT_TIMESTAMP;
@@ -100,6 +102,8 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
             prod.get("fecha_inscripcion"),
             prod.get("fecha_renovacion"),
             prod.get("fecha_caducidad"),
+            prod.get("fecha_cancelacion"),
+            prod.get("fecha_limite_venta"),
             prod.get("titular_direccion") or None,
             prod.get("fabricante_direccion") or None,
             prod.get("envases_autorizados") or None,
@@ -134,11 +138,10 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
                 """, (producto_id, sustancia_id, comp["concentracion"], comp["unidad"]))
 
         # 3. Usos y Dosis
-        # REGLA DE INTEGRIDAD CANÓNICA:
-        # Si la base de datos ya tiene los usos limpios y estructurados del censo oficial,
-        # NO los sobreescribimos con el texto segmentado del PDF. Solo insertamos si estaba vacío.
         cursor.execute("SELECT COUNT(*) FROM mapa_usos WHERE producto_id = ?", (producto_id,))
-        if cursor.fetchone()[0] == 0 and datos.get("usos"):
+        usos_existentes = cursor.fetchone()[0]
+
+        if usos_existentes == 0 and datos.get("usos"):
             usos_params = []
             for u in datos.get("usos", []):
                 cult = u.get("cultivo", "").strip()
@@ -156,8 +159,12 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
                     u.get("dosis_unidad"),
                     u.get("dosis_original", ""),
                     u.get("num_aplicaciones"),
-                    None,
+                    u.get("intervalo_min_dias"),
                     u.get("volumen_caldo", ""),
+                    u.get("volumen_caldo_min"),
+                    u.get("volumen_caldo_max"),
+                    u.get("metodo_aplicacion", ""),
+                    u.get("bbch", ""),
                     u.get("condiciones", ""),
                     u.get("plazo_dias", 0),
                     u.get("plazo_texto", "")
@@ -167,9 +174,38 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
                     INSERT INTO mapa_usos (
                         producto_id, cultivo_nombre, agente_nombre, dosis_min, dosis_max,
                         dosis_unidad, dosis_original, num_aplicaciones_max, intervalo_min_dias,
-                        volumen_caldo, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        volumen_caldo, volumen_caldo_min, volumen_caldo_max, metodo_aplicacion,
+                        bbch, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """, usos_params)
+        elif usos_existentes > 0 and datos.get("usos"):
+            # Enriquecer los usos existentes con detalles técnicos extraídos del PDF
+            for u in datos.get("usos", []):
+                cult = u.get("cultivo", "").strip()
+                if not cult:
+                    continue
+                cursor.execute("""
+                    UPDATE mapa_usos SET
+                        volumen_caldo = COALESCE(NULLIF(?, ''), volumen_caldo),
+                        volumen_caldo_min = COALESCE(?, volumen_caldo_min),
+                        volumen_caldo_max = COALESCE(?, volumen_caldo_max),
+                        intervalo_min_dias = COALESCE(?, intervalo_min_dias),
+                        metodo_aplicacion = COALESCE(NULLIF(?, ''), metodo_aplicacion),
+                        bbch = COALESCE(NULLIF(?, ''), bbch),
+                        condiciones_especificas = COALESCE(NULLIF(?, ''), condiciones_especificas)
+                    WHERE producto_id = ? AND (cultivo_nombre LIKE ? OR cultivo_nombre = ?);
+                """, (
+                    u.get("volumen_caldo", ""),
+                    u.get("volumen_caldo_min"),
+                    u.get("volumen_caldo_max"),
+                    u.get("intervalo_min_dias"),
+                    u.get("metodo_aplicacion", ""),
+                    u.get("bbch", ""),
+                    u.get("condiciones", ""),
+                    producto_id,
+                    f"%{cult}%",
+                    cult
+                ))
 
         # 4. Plazos de Seguridad (filtrando cualquier artefacto de pie de página)
         cursor.execute("DELETE FROM mapa_plazos_seguridad WHERE producto_id = ?", (producto_id,))
@@ -299,7 +335,7 @@ def procesar_directorio(directorio: Path, db_path: Path = DB_DEFAULT, forzar: bo
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingesta masiva relacional de fitosanitarios MAPA.")
-    parser.add_argument("--dir", type=str, default=r"C:\Users\mifso\Downloads", help="Directorio con PDFs de fichas")
+    parser.add_argument("--dir", type=str, default=str(Path(__file__).parent / "cache_pdfs"), help="Directorio con PDFs de fichas")
     parser.add_argument("--archivo", type=str, default=None, help="Ruta a un PDF específico")
     parser.add_argument("--db", type=str, default=str(DB_DEFAULT), help="Ruta al archivo de base de datos SQLite")
     parser.add_argument("--force", action="store_true", help="Forzar reingesta aunque el SHA-256 coincida")

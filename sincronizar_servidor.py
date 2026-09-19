@@ -25,15 +25,24 @@ def main():
     print("======================================================================")
     
     # 1. Sincronizar catálogo nacional
-    print("\n[1/3] Descargando y sincronizando catálogo nacional del MAPA...")
+    print("\n[1/4] Descargando y sincronizando catálogo nacional del MAPA...")
     descargar_e_ingestar_catalogo_nacional(db_path=DB_FILE)
     
-    # 2. Exportar a JSON unificado
-    print("\n[2/3] Generando archivo JSON canónico de alta disponibilidad...")
+    # 2. Enriquecer con fichas PDF oficiales (si existen en caché)
+    cache_dir = BASE_DIR / "cache_pdfs"
+    if cache_dir.exists() and any(cache_dir.glob("*.pdf")):
+        print("\n[2/4] Enriqueciendo datos con máxima fidelidad desde fichas técnicas PDF...")
+        from enriquecer_desde_pdfs import enriquecer_catalogo
+        enriquecer_catalogo(db_path=DB_FILE, forzar=False)
+    else:
+        print("\n[2/4] No se detectó directorio cache_pdfs/ con archivos PDF.")
+
+    # 3. Exportar a JSON unificado
+    print("\n[3/4] Generando archivo JSON canónico de alta disponibilidad...")
     exportar_base_de_datos_a_json(db_path=DB_FILE, json_salida=JSON_FILE)
     
-    # 3. Resumen estadístico
-    print("\n[3/3] Verificando métricas de integridad:")
+    # 4. Resumen estadístico
+    print("\n[4/4] Verificando métricas de integridad:")
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     tablas = [
