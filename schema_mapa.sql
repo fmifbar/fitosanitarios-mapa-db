@@ -68,7 +68,17 @@ CREATE TABLE IF NOT EXISTS mapa_usos (
     volumen_caldo TEXT,                         -- Rango de caldo declarado (ej: '500-1000 l/ha')
     volumen_caldo_min REAL,                     -- Caldo numérico mínimo en l/ha para cálculos
     volumen_caldo_max REAL,                     -- Caldo numérico máximo en l/ha para cálculos
-    ambito TEXT,                                -- Ámbito (ej: 'Aire libre', 'Invernadero', 'No Agrario')
+    -- OJO: `ambito` NO distingue invernadero de aire libre. El Ministerio solo
+    -- manda aquí 'Agrario' o 'No Agrario', y lo deja en blanco el 54 % de las
+    -- veces. Lo que separa invernadero de aire libre es `sistema_cultivo`.
+    ambito TEXT,                                -- 'Agrario' | 'No Agrario'
+    -- 'Invernadero' | 'Aire libre' | 'Interior', traducido de la letra que
+    -- manda el MAPA (G / F / I). La equivalencia está **comprobada** contra el
+    -- texto de 3.012 fichas PDF, no supuesta: ver `_sistema_cultivo_de()`.
+    -- En Almería es el dato que decide si un producto se puede usar o no:
+    -- autorizado solo al aire libre no es autorizado bajo plástico.
+    sistema_cultivo TEXT,
+    sistema_cultivo_codigo TEXT,                -- la letra original, por si acaso
     tipo_usuario TEXT,                          -- 'Profesional', 'No Profesional'
     metodo_aplicacion TEXT,                     -- Método (ej: 'Pulverización foliar', 'Goteo')
     bbch TEXT,                                  -- Estadio fenológico BBCH autorizado

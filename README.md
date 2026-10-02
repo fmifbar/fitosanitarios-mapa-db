@@ -187,6 +187,58 @@ El retraso es de dos días sobre la publicación. Si lo que se quiere saber es q
 producto ha sido cancelado, eso no espera a esto: lo recoge el flujo diario en menos
 de 24 h.
 
+---
+
+## ⚠️ EN MURGIVERDE SOLO HAY INVERNADEROS
+
+**Norma del responsable.** Toda la producción de la cooperativa es bajo plástico. No
+hay una sola parcela al aire libre.
+
+Eso convierte a `mapa_usos.sistema_cultivo` en **el campo que decide si un producto
+se puede usar o no**, y no en un detalle informativo:
+
+| `sistema_cultivo` | Código MAPA | En Murgiverde |
+|---|---|---|
+| `Invernadero` | `G` | **Se puede usar** |
+| `Aire libre` | `F` | **NO se puede usar.** Autorizado al aire libre no es autorizado bajo plástico |
+| `Interior` | `I` | No aplica |
+| *(en blanco)* | — | **No consta.** Ni sí ni no: lo decide el técnico con la ficha delante |
+
+El Ministerio lo deja en blanco en el 54 % de los usos. **Ese hueco no se rellena por
+nuestra cuenta**: un «invernadero» supuesto que resulte ser «aire libre» es una
+aplicación ilegal con el visto bueno del programa.
+
+Qué hay de nuestros cultivos (de 8.535 usos de pimiento, tomate, berenjena, pepino,
+calabacín, melón y sandía):
+
+```
+Invernadero    2.187   25,6 %
+Aire libre     2.411   28,2 %
+en blanco      3.847   45,1 %
+otros             90    1,1 %
+```
+
+**De dónde sale la equivalencia, y por qué no está supuesta.** El JSON manda una
+letra. Para saber qué significa cada una se cruzaron los usos del JSON con los de las
+fichas PDF, que lo escriben en palabras, usando solo las parejas
+(registro, cultivo, agente) que aparecen **una sola vez en cada lado** — cuando
+aparecen dos veces suele ser precisamente porque hay una fila de aire libre y otra de
+invernadero. Sobre 3.012 casos limpios:
+
+```
+F  →  Aire libre    2.644 de 2.644   (100 %)
+G  →  Invernadero     254 de 254     (100 %)
+I  →  Interior        114 de 114     (100 %)
+```
+
+Cualquier código que no sea una de esas tres letras se guarda **tal y como viene**.
+
+> **Cuidado con `ambito`:** no sirve para esto. El Ministerio solo manda ahí
+> `Agrario` o `No Agrario`. Lo que separa invernadero de aire libre es
+> `sistema_cultivo`, que es otro campo.
+
+---
+
 ### Dos cosas que conviene saber al leer estos datos
 
 - **Lo que no se ha leído está en `NULL`, nunca en `0` ni en `""`.** Un plazo de

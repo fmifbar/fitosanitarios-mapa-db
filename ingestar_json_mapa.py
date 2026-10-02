@@ -160,6 +160,40 @@ def _numero(v):
     return None if n == 0 else n
 
 
+# Lo que significan los códigos de `SistemaCultivo`, **comprobado y no supuesto**.
+#
+# El JSON del Ministerio trae una letra. Para saber qué quiere decir cada una
+# se cruzaron el 02/10/2026 los usos del JSON con los de las fichas PDF, que lo
+# escriben en palabras, quedándose solo con los casos en que la pareja
+# (registro, cultivo, agente) aparecía **una sola vez en cada lado** —cuando
+# aparece dos veces suele ser justo porque hay una fila de aire libre y otra de
+# invernadero, y cruzarlas al azar da ruido—. Sobre 3.012 casos limpios:
+#
+#     F  ->  Aire libre     2.644 de 2.644   (100 %)
+#     G  ->  Invernadero      254 de 254     (100 %)
+#     I  ->  Interior         114 de 114     (100 %)
+#
+# IMPORTA AQUÍ MÁS QUE EN NINGÚN SITIO: en Almería se cultiva bajo plástico, y
+# un producto autorizado solo al aire libre **no está autorizado** en un
+# invernadero. De los 8.535 usos de nuestros cultivos, 2.187 son de invernadero
+# y 2.411 de aire libre; el resto el Ministerio lo deja en blanco.
+#
+# Lo que no sea una de las tres letras se guarda **tal y como viene**. Inventar
+# una traducción para un código que no se ha comprobado sería justo lo que esta
+# tabla existe para evitar.
+SISTEMAS_DE_CULTIVO = {"F": "Aire libre", "G": "Invernadero", "I": "Interior"}
+
+
+def _sistema_cultivo_de(u):
+    """(texto legible, código original) del sistema de cultivo de un uso."""
+    codigo = str(u.get("SistemaCultivo") or "").strip()
+    if not codigo:
+        # En blanco en el 54 % de los usos. Se deja en blanco: el Ministerio
+        # no lo dice, y suponerlo sería afirmar algo que nadie ha afirmado.
+        return None, None
+    return SISTEMAS_DE_CULTIVO.get(codigo, codigo), codigo
+
+
 def _dosis_de(u):
     """(mínimo, máximo, unidad, texto) de un uso del JSON del Ministerio."""
     d_min = _numero(u.get("Dosis_Min"))
@@ -244,7 +278,10 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
         ("mapa_usos", "volumen_caldo_min", "REAL"),
         ("mapa_usos", "volumen_caldo_max", "REAL"),
         ("mapa_usos", "metodo_aplicacion", "TEXT"),
-        ("mapa_usos", "bbch", "TEXT")
+        ("mapa_usos", "bbch", "TEXT"),
+        # Invernadero / aire libre / interior. Ver `_sistema_cultivo_de()`.
+        ("mapa_usos", "sistema_cultivo", "TEXT"),
+        ("mapa_usos", "sistema_cultivo_codigo", "TEXT")
     ]:
         try:
             cursor.execute(f"ALTER TABLE {col_def[0]} ADD COLUMN {col_def[1]} {col_def[2]};")
@@ -363,7 +400,11 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
             if m_int:
                 interv_dias = int(m_int.group(1))
 
+            # OJO: `Ambito` solo vale «Agrario» o «No Agrario». NO distingue
+            # invernadero de aire libre; eso es `SistemaCultivo`, que es otro
+            # campo y hasta hoy no se guardaba.
             ambito = u.get("Ambito", "").strip()
+            sistema_cultivo, sistema_cultivo_cod = _sistema_cultivo_de(u)
             tipo_usuario = u.get("TipoUsuario", "").strip()
             condic = u.get("CondicionamientoEspecifico", "").strip()
 
@@ -397,7 +438,8 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
             usos_lote.append((
                 prod_id, cultivo, agente, d_min, d_max, d_unidad, d_orig,
                 n_aplic, interv_dias, vol_caldo, ambito, tipo_usuario, condic, ps_dias, ps_texto,
-                codigo_cultivo, codigo_agente, vol_min, vol_max, metodo_aplicacion, bbch
+                codigo_cultivo, codigo_agente, vol_min, vol_max, metodo_aplicacion, bbch,
+                sistema_cultivo, sistema_cultivo_cod
             ))
 
         if usos_lote:
@@ -406,8 +448,9 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
                     producto_id, cultivo_nombre, agente_nombre, dosis_min, dosis_max,
                     dosis_unidad, dosis_original, num_aplicaciones_max, intervalo_min_dias,
                     volumen_caldo, ambito, tipo_usuario, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto,
-                    codigo_cultivo, codigo_agente, volumen_caldo_min, volumen_caldo_max, metodo_aplicacion, bbch
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    codigo_cultivo, codigo_agente, volumen_caldo_min, volumen_caldo_max, metodo_aplicacion, bbch,
+                    sistema_cultivo, sistema_cultivo_codigo
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """, usos_lote)
             total_usos += len(usos_lote)
 
