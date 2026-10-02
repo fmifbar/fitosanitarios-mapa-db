@@ -304,3 +304,51 @@ def test_las_incompatibilidades_se_buscan_donde_estan_de_verdad():
     texto = toxicologia_de(FICHA)["incompatibilidades_mezclas"] or ""
     assert "alcalinos" in texto          # de condiciones_generales_uso
     assert "azufre micronizado" in texto  # de otras_indicaciones
+
+
+# --------------------------------------------------------------------------
+# Qué fichas entran en cada pasada
+# --------------------------------------------------------------------------
+
+def _catalogo(n):
+    return [{"num_registro": f"ES-{i:05d}", "id_producto": i, "estado": "Vigente"}
+            for i in range(n)]
+
+
+def test_el_barrido_completo_no_se_deja_ninguna():
+    """
+    `tope = 0` significa todas, y es lo normal: el Ministerio publica una vez
+    por semana y se recoge entera. El motivo de no ir por tandas es que **una
+    ficha puede cambiar sin cambiar de estado** —como ES-01265, que cambió la
+    caducidad— y por tandas se quedaría esperando turno.
+    """
+    from enriquecer_fichas import elegir
+    assert len(elegir(_catalogo(2081), {}, tope=0)) == 2081
+
+
+def test_con_tope_se_recorta_pero_por_prioridad():
+    """
+    Si la pasada se corta —se agota el runner, se cae la red— lo que haya
+    entrado tiene que ser lo que más falta hacía, no lo primero por orden
+    alfabético.
+    """
+    from enriquecer_fichas import elegir
+    cat = _catalogo(10)
+    guardado = {p["num_registro"]: {"estado": "Vigente", "sha": "x", "cuando": "2026-01-01"}
+                for p in cat}
+    guardado["ES-00007"]["sha"] = None      # a esta no se le ha sacado nunca la ficha
+
+    elegidas = elegir(cat, guardado, tope=3)
+
+    assert elegidas[0]["num_registro"] == "ES-00007"
+    assert len(elegidas) == 3
+
+
+def test_un_cambio_de_estado_adelanta_la_ficha():
+    from enriquecer_fichas import elegir
+    cat = _catalogo(5)
+    cat[3]["estado"] = "Cancelado"
+    guardado = {p["num_registro"]: {"estado": "Vigente", "sha": "x", "cuando": "2026-01-01"}
+                for p in cat}
+
+    assert elegir(cat, guardado, tope=1)[0]["num_registro"] == "ES-00003"

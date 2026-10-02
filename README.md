@@ -138,18 +138,40 @@ etl_ingesta_mapa.py      carga en fitosanitarios_mapa.db
 Medido sobre las 2.080 fichas: **0 excepciones**, 28.212 usos, 4.519 plazos, 6.214
 mitigaciones, 2.075 filas de seguridad y 2.080 de toxicología.
 
-### Por qué semanal y con tope, y no diario y entero
+### Por qué semanal, y por qué completo
 
-Las fichas cambian poco; lo que cambia a diario es el estado del registro, y de eso
-ya se encarga el flujo diario leyendo el JSON. Bajar 2.080 PDF cada noche para que
-2.070 salgan idénticos no es diligencia, es ruido sobre un servidor público.
+**Semanal porque el Ministerio publica una vez por semana.** Lo dice su propia web:
+*«esta base de datos se actualizará semanalmente»*, y la última actualización cuando
+se escribió esto era del lunes 28/09/2026 a las 11:24. Pedirlas más a menudo es
+bajarse lo mismo varias veces.
 
-Con 300 por pasada y una pasada semanal el catálogo se completa en unas siete
-semanas, y después solo se tocan las que cambien.
+**Completo, y no por tandas, porque una ficha puede cambiar sin cambiar de estado.**
+En la comparación del 02/10/2026 sobre 50 fichas, la única que había cambiado en dos
+semanas (`ES-01265`) lo hizo en la fecha de caducidad, con el estado intacto. Un
+criterio incremental la habría dejado esperando turno.
+
+Lo que cuesta, medido contra el servidor del Ministerio:
+
+| | |
+|---|---|
+| Por ficha | 0,1–0,2 s y 70–335 KB |
+| Las 2.081 enteras | ~25–30 min y ~480 MB |
+| Ritmo sostenido | ~0,6 peticiones/s, una vez por semana |
+
+El PDF hay que bajarlo siempre: **el MAPA no admite peticiones condicionales**
+(no devuelve `ETag` ni `Last-Modified`, comprobado el 02/10/2026). Lo que sí se evita
+es el trabajo de después: si el SHA-256 coincide con el guardado, no se extrae ni se
+escribe, así que la base apenas se mueve y el repositorio no engorda por esto.
 
 ```bash
-python enriquecer_fichas.py --tope 300 --espera 1.0
+python enriquecer_fichas.py              # todas
+python enriquecer_fichas.py --tope 5     # para probar
 ```
+
+El flujo corre **los domingos**, de modo que el lunes el técnico tenga la ficha de
+cada producto. Nótese que el Ministerio publica **los lunes**, así que lo que se
+recoge el domingo es la publicación del lunes anterior —que es la vigente hasta ese
+momento—. Para recoger la del mismo lunes basta con mover el cron a `0 13 * * 1`.
 
 ### Dos cosas que conviene saber al leer estos datos
 
@@ -166,7 +188,7 @@ python enriquecer_fichas.py --tope 300 --espera 1.0
 | Flujo | Cuándo | Qué hace |
 |---|---|---|
 | `actualizar_fitosanitarios.yml` | Diario, 04:00 UTC | Catálogo y usos desde el JSON del MAPA |
-| `actualizar_fichas_pdf.yml` | Domingos, 05:00 UTC | Fichas PDF que falten, hasta 300 por pasada |
+| `actualizar_fichas_pdf.yml` | Domingos, 05:00 UTC | Las 2.081 fichas PDF, barrido completo |
 
 Los dos se pueden lanzar a mano desde **Actions** > el flujo > **Run workflow**.
 

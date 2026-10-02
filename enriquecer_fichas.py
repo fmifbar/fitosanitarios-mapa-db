@@ -17,25 +17,37 @@ no se ve que lo está: se consulta igual y responde igual.
 
 Cómo lo hace, y por qué así
 ---------------------------
-**Incremental y con tope.** No se bajan las 2.080 fichas cada vez. Cada pasada
-coge solo las que faltan o las que han cambiado, hasta un máximo, y espera
-entre una y otra.
+**Barrido completo, una vez por semana.** Se piden las 2.081 fichas, y se
+reprocesan solo las que han cambiado.
 
-El servidor del Ministerio es público y lo paga todo el mundo. Bajarle 2.080
-PDF cada noche para que 2.070 sean idénticos a los de ayer no es diligencia: es
-ruido. Con el tope por pasada, el catálogo se completa en unas semanas y a
-partir de ahí solo se tocan las que cambien.
+Se intentó que fuera incremental —300 por pasada, eligiendo las que faltaran o
+hubieran cambiado de estado— y tenía un agujero: **una ficha puede cambiar sin
+cambiar de estado**. En la comparación del 02/10/2026 sobre 50 fichas, la única
+que había cambiado en dos semanas (ES-01265) lo hizo en la fecha de caducidad,
+con el estado intacto. Por el criterio incremental habría esperado turno
+semanas. Un barrido completo no deja ese hueco.
 
-**Qué se considera que hay que rehacer**, por este orden:
-  - la que nunca se ha extraído (no tiene `pdf_sha256`),
-  - aquella cuyo `estado` en el catálogo ya no es el que tenemos guardado,
-  - la más antigua, si aún queda cupo.
+Lo que cuesta, medido el 02/10/2026 contra el servidor del Ministerio:
 
-Y si el PDF que baja resulta tener el mismo SHA-256 que el guardado, no se
-reprocesa: la ficha no ha cambiado.
+    cada ficha           0,1 - 0,2 s   y entre 70 y 335 KB
+    las 2.081 enteras    ~25-30 min    y ~480 MB, una vez por semana
+    ritmo sostenido      ~0,6 peticiones por segundo
+
+El servidor del Ministerio es público y lo paga todo el mundo, pero eso es un
+ritmo razonable para una vez a la semana. No lo sería a diario.
+
+**El PDF se baja siempre; reprocesarlo, no.** El endpoint del MAPA no admite
+peticiones condicionales (no devuelve `ETag` ni `Last-Modified`, comprobado el
+02/10/2026), así que no hay forma de saber si una ficha cambió sin bajarla. Lo
+que sí se evita es el trabajo de después: si el SHA-256 coincide con el
+guardado, no se extrae ni se escribe. Así la base apenas se mueve y el
+repositorio no engorda por esto.
+
+Con `--tope N` se puede limitar la pasada, que es lo suyo para probar
+(`--tope 5`) o si alguna vez hace falta partirla.
 
 Uso:
-    python enriquecer_fichas.py [--tope 300] [--espera 1.0] [--forzar]
+    python enriquecer_fichas.py [--tope 0] [--espera 0.3] [--forzar]
 """
 import argparse
 import sqlite3
@@ -61,13 +73,14 @@ BASE_DIR = Path(__file__).parent
 DB_DEFAULT = BASE_DIR / "fitosanitarios_mapa.db"
 CACHE_DIR = BASE_DIR / "cache_pdfs"
 
-# Cuántas fichas como mucho por pasada. Con 300 a la semana, las 2.080 se
-# completan en siete semanas y después solo se tocan las que cambien.
-TOPE_POR_PASADA = 300
+# 0 = todas. El barrido completo es lo que garantiza que ninguna ficha se
+# quede vieja, incluidas las que cambian sin cambiar de estado.
+TOPE_POR_PASADA = 0
 
-# Segundos entre descargas. No es por cortesía: es un servidor público y
-# compartido, y nada de esto corre con prisa.
-ESPERA_ENTRE_DESCARGAS = 1.0
+# Segundos entre descargas. Con 0,3 s el ritmo sostenido queda en unas 0,6
+# peticiones por segundo contando la propia descarga, que es poco para una vez
+# por semana. Es un servidor público: nada de esto corre con prisa.
+ESPERA_ENTRE_DESCARGAS = 0.3
 
 # Un PDF de ficha baja de 15 kB no es una ficha: es una página de error
 # devuelta con código 200, que el Ministerio hace a veces.
@@ -91,15 +104,20 @@ def _estado_guardado(db_path: Path) -> Dict[str, Dict[str, Any]]:
 
 
 def elegir(catalogo: List[Dict[str, Any]], guardado: Dict[str, Dict[str, Any]],
-           tope: int, forzar: bool = False) -> List[Dict[str, Any]]:
+           tope: int = 0, forzar: bool = False) -> List[Dict[str, Any]]:
     """
-    Las fichas que toca rehacer en esta pasada, las más urgentes primero.
+    Las fichas de esta pasada, las más urgentes primero.
 
-    Se devuelven ordenadas por prioridad y recortadas al tope, para que una
-    pasada corta haga lo que más falta y no lo primero que encuentre.
+    Con `tope = 0` van **todas**, que es lo normal. El orden importa igual,
+    porque si la pasada se corta a medias —se agota el tiempo del runner, se
+    cae la red— lo que haya entrado será lo que más falta hacía, y no lo
+    primero que había por orden alfabético.
     """
+    def recorta(lista):
+        return lista if tope <= 0 else lista[:tope]
+
     if forzar:
-        return catalogo[:tope]
+        return recorta(catalogo)
 
     nunca, cambiadas, viejas = [], [], []
     for p in catalogo:
@@ -112,8 +130,7 @@ def elegir(catalogo: List[Dict[str, Any]], guardado: Dict[str, Dict[str, Any]],
             viejas.append((prev.get("cuando") or "", p))
 
     viejas.sort(key=lambda x: x[0])
-    orden = nunca + cambiadas + [p for _, p in viejas]
-    return orden[:tope]
+    return recorta(nunca + cambiadas + [p for _, p in viejas])
 
 
 def _bajar(client: httpx.Client, id_producto: Any, destino: Path) -> bool:
@@ -139,11 +156,12 @@ def enriquecer(tope: int = TOPE_POR_PASADA, espera: float = ESPERA_ENTRE_DESCARG
     pendientes = elegir(catalogo, guardado, tope, forzar)
 
     print("=" * 70)
-    print("FICHAS PDF DEL MAPA - pasada incremental")
+    print("FICHAS PDF DEL MAPA - " + ("barrido completo" if tope <= 0 else f"pasada de {tope}"))
     print(f"  catálogo oficial:        {len(catalogo)}")
     print(f"  ya extraídas:            {sum(1 for v in guardado.values() if v.get('sha'))}")
-    print(f"  en esta pasada:          {len(pendientes)} (tope {tope})")
+    print(f"  en esta pasada:          {len(pendientes)}")
     print(f"  espera entre descargas:  {espera}s")
+    print(f"  tiempo estimado:         ~{len(pendientes) * (espera + 0.45) / 60:.0f} min")
     print("=" * 70)
 
     r = {"intentadas": 0, "cargadas": 0, "sin_cambios": 0, "no_bajadas": 0, "con_error": 0}
@@ -197,9 +215,9 @@ def enriquecer(tope: int = TOPE_POR_PASADA, espera: float = ESPERA_ENTRE_DESCARG
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Rellena las fichas PDF que falten, poco a poco.")
+    ap = argparse.ArgumentParser(description="Extrae las fichas PDF del MAPA.")
     ap.add_argument("--tope", type=int, default=TOPE_POR_PASADA,
-                    help="máximo de fichas por pasada")
+                    help="máximo de fichas por pasada; 0 = todas (lo normal)")
     ap.add_argument("--espera", type=float, default=ESPERA_ENTRE_DESCARGAS,
                     help="segundos entre descargas")
     ap.add_argument("--forzar", action="store_true",

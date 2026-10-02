@@ -1,4 +1,4 @@
-name: Fichas PDF del MAPA (semanal, incremental)
+name: Fichas PDF del MAPA (semanal, completo)
 
 # POR QUÉ ESTE WORKFLOW EXISTE
 # ----------------------------
@@ -10,26 +10,42 @@ name: Fichas PDF del MAPA (semanal, incremental)
 # congeladas desde siempre. Una tabla congelada es peor que una vacía: se
 # consulta igual y responde igual.
 #
-# POR QUÉ SEMANAL Y CON TOPE, Y NO DIARIO Y ENTERO
-# ------------------------------------------------
-# Las fichas cambian poco: lo que cambia a diario es el estado del registro, y
-# de eso ya se encarga el workflow diario leyendo el JSON. Bajar 2.080 PDF cada
-# noche para que 2.070 salgan idénticos no es diligencia, es ruido sobre un
-# servidor público que paga todo el mundo.
+# POR QUÉ SEMANAL, Y POR QUÉ COMPLETO
+# ------------------------------------
+# Semanal porque **el Ministerio publica una vez por semana**. Lo dice su
+# propia web: «esta base de datos se actualizará semanalmente». Pedir las
+# fichas más a menudo que eso es bajarse lo mismo varias veces.
 #
-# Con 300 por pasada y una pasada semanal, el catálogo se completa en unas
-# siete semanas, y a partir de ahí solo se tocan las que cambien.
+# Completo, y no 300 por pasada, porque **una ficha puede cambiar sin cambiar
+# de estado**. En la comparación del 02/10/2026 sobre 50 fichas, la única que
+# había cambiado en dos semanas (ES-01265) lo hizo en la fecha de caducidad,
+# con el estado intacto. Un criterio incremental la habría dejado esperando
+# turno. Un barrido completo no deja ese hueco.
+#
+# Lo que cuesta, medido contra el servidor del Ministerio: 0,1-0,2 s y 70-335 KB
+# por ficha; las 2.081 en unos 25-30 minutos y ~480 MB, una vez por semana.
+# El PDF hay que bajarlo siempre porque el MAPA no admite peticiones
+# condicionales (sin ETag ni Last-Modified), pero si el SHA-256 coincide con el
+# guardado no se extrae ni se escribe: la base apenas se mueve.
+#
+# HORARIO: el domingo deja al técnico con todo listo el lunes por la mañana.
+# Téngase en cuenta que el Ministerio publica **los lunes** (la última cuando
+# se escribió esto fue el lunes 28/09 a las 11:24), así que lo que se recoge el
+# domingo es la publicación del lunes anterior, que es la vigente hasta
+# entonces. Si algún día se quiere la del mismo lunes, basta con mover el cron
+# a '0 13 * * 1' (lunes 15:00 hora de aquí, ya publicada).
 
 on:
   schedule:
-    # Domingos a las 05:00 UTC, una hora después del diario para no solaparse.
+    # Domingos a las 05:00 UTC (07:00 aquí), una hora después del diario para
+    # no solaparse. El lunes el técnico tiene la ficha de cada producto.
     - cron: '0 5 * * 0'
   workflow_dispatch:
     inputs:
       tope:
-        description: 'Máximo de fichas en esta pasada'
+        description: 'Máximo de fichas en esta pasada (0 = todas)'
         required: false
-        default: '300'
+        default: '0'
       forzar:
         description: 'Rehacer aunque no hayan cambiado (sí / no)'
         required: false
@@ -46,8 +62,10 @@ concurrency:
 jobs:
   fichas:
     runs-on: ubuntu-latest
-    # Las descargas van con pausa a propósito; 300 fichas tardan lo suyo.
-    timeout-minutes: 90
+    # Las 2.081 tardan unos 25-30 min. Se deja holgura por si el Ministerio va
+    # lento un domingo, pero con tope para que una pasada atascada no se quede
+    # colgada seis horas.
+    timeout-minutes: 120
 
     steps:
       - name: 📥 Clonar repositorio
@@ -64,11 +82,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 📄 Extraer las fichas que falten
+      - name: 📄 Extraer las fichas (barrido completo)
         run: |
           python enriquecer_fichas.py \
-            --tope "${{ github.event.inputs.tope || '300' }}" \
-            --espera 1.0 \
+            --tope "${{ github.event.inputs.tope || '0' }}" \
+            --espera 0.3 \
             ${{ github.event.inputs.forzar == 'sí' && '--forzar' || '' }}
 
       - name: 🔎 Comprobar que la base no ha menguado
