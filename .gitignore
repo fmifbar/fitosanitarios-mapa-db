@@ -17,3 +17,11 @@ cache_pdfs/
 .venv/
 venv/
 env/
+
+# Temporales de las comprobaciones
+.anterior.tmp.db*
+salida_fichas.log
+
+# SQLite deja estos al trabajar en modo WAL; lo que se publica es el .db
+*.db-wal
+*.db-shm

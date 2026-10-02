@@ -120,7 +120,11 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
         SELECT producto_id, cultivo_nombre, agente_nombre, codigo_cultivo, codigo_agente,
                dosis_min, dosis_max, dosis_unidad, dosis_original, num_aplicaciones_max, intervalo_min_dias,
                volumen_caldo, volumen_caldo_min, volumen_caldo_max, metodo_aplicacion, bbch,
-               ambito, tipo_usuario, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
+               ambito, tipo_usuario, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto,
+               -- Invernadero / aire libre / interior. Es el campo que decide si
+               -- un producto se puede usar bajo plástico, así que tiene que
+               -- viajar también en el JSON y no solo en la base.
+               sistema_cultivo, sistema_cultivo_codigo
         FROM mapa_usos ORDER BY id ASC
     """).fetchall():
         usos_map.setdefault(r["producto_id"], []).append({
@@ -130,7 +134,11 @@ def exportar_base_de_datos_a_json(db_path: Path = None, json_salida: Path = None
             "codigo_agente": r["codigo_agente"],
             "bbch": r["bbch"],
             "metodo_aplicacion": r["metodo_aplicacion"],
+            # OJO: `ambito_de_uso` solo vale «Agrario» o «No Agrario». Lo que
+            # distingue invernadero de aire libre es `sistema_cultivo`.
             "ambito_de_uso": r["ambito"],
+            "sistema_cultivo": r["sistema_cultivo"],
+            "sistema_cultivo_codigo": r["sistema_cultivo_codigo"],
             "tipo_usuario": r["tipo_usuario"],
             "dosis_min": r["dosis_min"],
             "dosis_max": r["dosis_max"],

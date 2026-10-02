@@ -32,13 +32,68 @@ jobs:
           pip install -r requirements.txt
 
       - name: 🌾 Ejecutar sincronización con el Ministerio (MAPA)
+        env:
+          # Sin esto Python se guarda la salida en el buffer y la pantalla
+          # queda en blanco mientras corre.
+          PYTHONUNBUFFERED: "1"
         run: |
           python sincronizar_servidor.py
+
+      - name: 🔎 Comprobar antes de publicar
+        # Hasta el 02/10/2026 este flujo hacía commit **pase lo que pase**. Si
+        # el Ministerio respondía a medias, se publicaba un catálogo con la
+        # mitad de los productos y TT EDITOR se lo tragaba a la mañana
+        # siguiente.
+        #
+        # Y un catálogo recortado no es uno viejo: uno viejo dice cosas de la
+        # semana pasada, uno recortado **dice que no existe lo que sí existe**.
+        #
+        # Si no cuadra, este paso falla y el commit no llega a ejecutarse: se
+        # queda la versión anterior, que es correcta aunque sea de ayer.
+        # Escribe también `estado.json` con la fecha y los recuentos.
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python comprobar_antes_de_publicar.py
+
+      - name: 📦 Publicar el catálogo en la Release «ultimo»
+        # POR QUÉ UNA RELEASE Y NO SOLO UN COMMIT
+        # ---------------------------------------
+        # La base y el JSON suman 118 MB y se reescriben **enteros** cada vez
+        # que cambia algo: son binarios, git no puede guardar solo la
+        # diferencia. Medido: ~6,6 MB al día de crecimiento del repositorio,
+        # unos 2,4 GB al año, para publicar los mismos datos.
+        #
+        # Las Releases guardan los archivos **fuera del historial**, así que
+        # no engordan el repositorio, y dan una dirección estable:
+        #
+        #   .../releases/latest/download/fitosanitarios_mapa.db
+        #
+        # Esto se añade **sin dejar de hacer el commit**. Primero que funcione
+        # y que TT EDITOR lo use; dejar de subir los archivos es el paso
+        # irreversible y va después, no a la vez.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete ultimo --yes --cleanup-tag 2>/dev/null || true
+          gh release create ultimo \
+            fitosanitarios_mapa.db fitosanitarios_mapa_completo.json estado.json \
+            --title "Catálogo al día" \
+            --notes "Última sincronización con el Registro del MAPA: $(date -u +'%Y-%m-%d %H:%M UTC').
+
+          El Ministerio publica semanalmente, los viernes a partir de las 14:00.
+          Los recuentos están en \`estado.json\`.
+
+          Direcciones estables:
+          - \`.../releases/latest/download/fitosanitarios_mapa.db\`
+          - \`.../releases/latest/download/fitosanitarios_mapa_completo.json\`
+          - \`.../releases/latest/download/estado.json\`"
 
       - name: 💾 Guardar cambios en el repositorio (Commit & Push)
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git add fitosanitarios_mapa.db fitosanitarios_mapa_completo.json
+          git add fitosanitarios_mapa.db fitosanitarios_mapa_completo.json estado.json
           git commit -m "🤖 Actualización automática MAPA: $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No hubo cambios en el registro oficial."
+          git pull --rebase --autostash
           git push

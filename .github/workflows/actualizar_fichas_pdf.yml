@@ -117,33 +117,53 @@ jobs:
             ${{ github.event.inputs.forzar == 'sí' && '--forzar' || '' }} \
             | tee salida_fichas.log
 
-      - name: 🔎 Comprobar que la base no ha menguado
-        # La misma idea que la regla del 90 % para el catálogo: si una pasada
-        # deja la base más pequeña que antes, algo ha ido mal y no se publica.
-        # Perder datos en silencio es peor que no actualizarlos.
+      - name: 🔎 Comprobar antes de publicar
+        # El mismo script que el flujo diario, en vez de una comprobación
+        # suelta aquí. Comparaba el **tamaño del archivo**, que es un indicio
+        # malo: SQLite reaprovecha páginas, así que una base puede perder la
+        # mitad de las filas sin encoger un byte. Lo que cuenta son las filas.
+        env:
+          PYTHONUNBUFFERED: "1"
         run: |
-          python - <<'PY'
-          import subprocess, sys, os
-          anterior = subprocess.run(
-              ["git", "cat-file", "-s", "HEAD:fitosanitarios_mapa.db"],
-              capture_output=True, text=True)
-          if anterior.returncode != 0:
-              print("No hay versión anterior con la que comparar; se continúa.")
-              sys.exit(0)
-          antes = int(anterior.stdout.strip())
-          ahora = os.path.getsize("fitosanitarios_mapa.db")
-          print(f"antes {antes} bytes, ahora {ahora} bytes")
-          if ahora < antes * 0.9:
-              sys.exit(f"La base ha perdido más del 10 %. No se publica.")
-          PY
+          python comprobar_antes_de_publicar.py
+
+      - name: 🗄️ Guardar la foto fechada de la semana
+        # EL ARCHIVO FECHADO, A PROPÓSITO Y NO POR ACCIDENTE
+        # ---------------------------------------------------
+        # Hasta ahora cada commit diario era, sin querer, una foto del
+        # catálogo oficial de ese día. Eso vale para algo serio: **justificar
+        # qué decía el Ministerio el día que se firmó un recetario**, que es
+        # la clase de pregunta que llega en una inspección meses después.
+        #
+        # Pero estaba ahí por accidente, y el día que haya que podar el
+        # historial por tamaño se perdería sin que nadie lo decidiera.
+        #
+        # Aquí se hace a propósito, y **semanal y no diario**, porque el
+        # Ministerio publica una vez por semana: una foto diaria serían siete
+        # copias idénticas de lo mismo.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FECHA=$(date -u +'%Y-%m-%d')
+          gh release create "catalogo-${FECHA}" \
+            fitosanitarios_mapa.db fitosanitarios_mapa_completo.json estado.json \
+            --title "Catálogo del MAPA · ${FECHA}" \
+            --notes "Foto del Registro Oficial de Productos Fitosanitarios tal y como estaba el ${FECHA}.
+
+          Se guarda para poder responder, meses después, qué decía el Ministerio
+          el día en que se firmó un recetario. El MAPA publica los viernes a
+          partir de las 14:00 y esta foto se toma el domingo siguiente.
+
+          Los recuentos están en \`estado.json\`." \
+            2>/dev/null || echo "Ya existía la foto de ${FECHA}; no se duplica."
 
       - name: 💾 Guardar los cambios
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          # Solo la base. Los PDF no se suben: `enriquecer_fichas.py` los borra
-          # según los procesa y `cache_pdfs/` está en el .gitignore.
-          git add fitosanitarios_mapa.db
+          # Los PDF no se suben: `enriquecer_fichas.py` los borra según los
+          # procesa y `cache_pdfs/` está en el .gitignore.
+          git add fitosanitarios_mapa.db estado.json
           # El mensaje dice si la pasada quedó a medias. Un commit que parece
           # completo y no lo es hace creer que el catálogo está al día.
           if grep -q "Agotado el margen" salida_fichas.log; then

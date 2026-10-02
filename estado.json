@@ -1,0 +1,35 @@
+{
+  "generado": "2026-10-02T10:44:36+00:00",
+  "origen": "Registro Oficial de Productos Fitosanitarios (MAPA)",
+  "el_mapa_publica": "semanalmente, los viernes a partir de las 14:00",
+  "ultima_sincronizacion_en_la_base": "2026-10-02 10:37:38",
+  "filas": {
+    "mapa_productos": 2080,
+    "mapa_usos": 62629,
+    "mapa_sustancias_activas": 377,
+    "mapa_producto_composicion": 2544,
+    "mapa_plazos_seguridad": 1707,
+    "mapa_seguridad": 2064,
+    "mapa_toxicologia": 2076,
+    "mapa_mitigaciones": 3001
+  },
+  "productos_vigentes": 1993,
+  "productos_con_ficha_pdf_extraida": 2080,
+  "usos_con_sistema_de_cultivo_declarado": 28697,
+  "usos_declarados_de_invernadero": 4454,
+  "tamano_mb": {
+    "base": 42.3,
+    "json": 80.6
+  },
+  "variacion_respecto_a_la_anterior": {
+    "mapa_productos": 0,
+    "mapa_usos": 0,
+    "mapa_sustancias_activas": 0,
+    "mapa_producto_composicion": 0,
+    "mapa_plazos_seguridad": 0,
+    "mapa_seguridad": 0,
+    "mapa_toxicologia": 0,
+    "mapa_mitigaciones": 0
+  },
+  "aviso": "Los recuentos son de esta copia, no del Ministerio en vivo. Lo que TT EDITOR calcula a partir de estos datos (ambito, dosis agregadas, cultivos y plagas) no es oficial aunque lo parezca: es una agregacion nuestra."
+}

@@ -256,6 +256,46 @@ Cualquier código que no sea una de esas tres letras se guarda **tal y como vien
 | `actualizar_fitosanitarios.yml` | Diario, 04:00 UTC | Catálogo y usos desde el JSON del MAPA |
 | `actualizar_fichas_pdf.yml` | Domingos, 05:00 UTC | Las 2.081 fichas PDF, barrido completo |
 
+### De dónde se descarga el catálogo
+
+| | Dirección |
+|---|---|
+| **Lo recomendado** | `.../releases/latest/download/fitosanitarios_mapa.db` |
+| El JSON | `.../releases/latest/download/fitosanitarios_mapa_completo.json` |
+| Los recuentos | `.../releases/latest/download/estado.json` |
+| Foto de una semana | `.../releases/download/catalogo-AAAA-MM-DD/...` |
+
+Los archivos van en **Releases** porque la base y el JSON suman 118 MB y se
+reescriben enteros cada vez que cambian: son binarios y git no puede guardar solo la
+diferencia, así que el repositorio engordaba ~6,6 MB al día —unos 2,4 GB al año— para
+publicar los mismos datos. Las Releases los guardan fuera del historial.
+
+**Siguen subiéndose también al repositorio, de momento.** Primero que las Releases
+funcionen y que TT EDITOR las use; dejar de subirlos es el paso irreversible y va
+después, no a la vez.
+
+### El archivo fechado
+
+Cada domingo se guarda una **foto de la semana** (`catalogo-AAAA-MM-DD`). Sirve para
+responder, meses después, **qué decía el Ministerio el día en que se firmó un
+recetario**, que es la clase de pregunta que llega en una inspección.
+
+Antes eso existía por accidente, en los commits diarios, y se habría perdido el día
+que hubiera que podar el historial por tamaño. Ahora está a propósito. Y es semanal,
+no diaria, porque el MAPA publica una vez por semana: una foto diaria serían siete
+copias idénticas.
+
+### Antes de publicar se comprueba
+
+`comprobar_antes_de_publicar.py` corre en los dos flujos y **detiene la publicación**
+si el catálogo ha menguado más de un 10 % respecto a la versión anterior, si la base
+no abre o si le faltan tablas.
+
+Hasta el 02/10/2026 el flujo diario hacía commit pase lo que pase. Si el Ministerio
+respondía a medias, se publicaba un catálogo con la mitad de los productos. **Un
+catálogo recortado no es uno viejo**: uno viejo dice cosas de la semana pasada, uno
+recortado dice que no existe lo que sí existe.
+
 El MAPA publica **los viernes a partir de las 14:00**, y el flujo de fichas recoge el
 domingo, cuando ya han terminado. El diario sigue siendo diario porque cuesta poco y
 así el estado de un producto nunca lleva más de 24 h de retraso.
