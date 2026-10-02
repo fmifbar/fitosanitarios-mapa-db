@@ -167,7 +167,14 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
                     u.get("bbch", ""),
                     u.get("condiciones", ""),
                     u.get("plazo_dias", 0),
-                    u.get("plazo_texto", "")
+                    u.get("plazo_texto", ""),
+                    # El ámbito y el tipo de usuario estaban en el esquema pero
+                    # no en este INSERT, así que en una base recién construida
+                    # se quedaban a NULL. El ámbito no es un adorno: es lo que
+                    # separa «Invernadero» de «Aire libre» y lo que permite
+                    # descartar los usos «No Agrario», que no son de campo.
+                    u.get("ambito"),
+                    u.get("tipo_usuario")
                 ))
             if usos_params:
                 cursor.executemany("""
@@ -175,8 +182,9 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
                         producto_id, cultivo_nombre, agente_nombre, dosis_min, dosis_max,
                         dosis_unidad, dosis_original, num_aplicaciones_max, intervalo_min_dias,
                         volumen_caldo, volumen_caldo_min, volumen_caldo_max, metodo_aplicacion,
-                        bbch, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        bbch, condiciones_especificas, plazo_seguridad_dias, plazo_seguridad_texto,
+                        ambito, tipo_usuario
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """, usos_params)
         elif usos_existentes > 0 and datos.get("usos"):
             # Enriquecer los usos existentes con detalles técnicos extraídos del PDF

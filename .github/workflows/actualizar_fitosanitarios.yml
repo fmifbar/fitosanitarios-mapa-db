@@ -2,7 +2,9 @@ name: Sincronizar Fitosanitarios MAPA
 
 on:
   schedule:
-    # Se ejecuta automáticamente todos los lunes a las 04:00 AM UTC
+    # Todos los días a las 04:00 UTC.
+    # (Decía «todos los lunes» y el cron era diario. Lo que manda es el cron,
+    #  así que lo que estaba mal era el comentario.)
     - cron: '0 4 * * *'
   workflow_dispatch:
     # Permite ejecutarlo manualmente con un solo clic desde GitHub

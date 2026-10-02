@@ -1,0 +1,104 @@
+name: Fichas PDF del MAPA (semanal, incremental)
+
+# POR QUÉ ESTE WORKFLOW EXISTE
+# ----------------------------
+# El paso de PDF estaba escrito en el repositorio pero no corría nunca: el
+# workflow diario solo llama a `sincronizar_servidor.py`, y `cache_pdfs/` está
+# en el .gitignore, así que en un runner limpio no hay ni un PDF que procesar.
+# Con lo cual `mapa_seguridad` (EPIs, reentrada, SPe3, SPe8),
+# `mapa_toxicologia` (pictogramas, frases H y P) y `mapa_mitigaciones` llevaban
+# congeladas desde siempre. Una tabla congelada es peor que una vacía: se
+# consulta igual y responde igual.
+#
+# POR QUÉ SEMANAL Y CON TOPE, Y NO DIARIO Y ENTERO
+# ------------------------------------------------
+# Las fichas cambian poco: lo que cambia a diario es el estado del registro, y
+# de eso ya se encarga el workflow diario leyendo el JSON. Bajar 2.080 PDF cada
+# noche para que 2.070 salgan idénticos no es diligencia, es ruido sobre un
+# servidor público que paga todo el mundo.
+#
+# Con 300 por pasada y una pasada semanal, el catálogo se completa en unas
+# siete semanas, y a partir de ahí solo se tocan las que cambien.
+
+on:
+  schedule:
+    # Domingos a las 05:00 UTC, una hora después del diario para no solaparse.
+    - cron: '0 5 * * 0'
+  workflow_dispatch:
+    inputs:
+      tope:
+        description: 'Máximo de fichas en esta pasada'
+        required: false
+        default: '300'
+      forzar:
+        description: 'Rehacer aunque no hayan cambiado (sí / no)'
+        required: false
+        default: 'no'
+
+permissions:
+  contents: write
+
+# Dos pasadas a la vez se pisarían al escribir la base y al hacer push.
+concurrency:
+  group: fichas-pdf-mapa
+  cancel-in-progress: false
+
+jobs:
+  fichas:
+    runs-on: ubuntu-latest
+    # Las descargas van con pausa a propósito; 300 fichas tardan lo suyo.
+    timeout-minutes: 90
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: 📦 Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 📄 Extraer las fichas que falten
+        run: |
+          python enriquecer_fichas.py \
+            --tope "${{ github.event.inputs.tope || '300' }}" \
+            --espera 1.0 \
+            ${{ github.event.inputs.forzar == 'sí' && '--forzar' || '' }}
+
+      - name: 🔎 Comprobar que la base no ha menguado
+        # La misma idea que la regla del 90 % para el catálogo: si una pasada
+        # deja la base más pequeña que antes, algo ha ido mal y no se publica.
+        # Perder datos en silencio es peor que no actualizarlos.
+        run: |
+          python - <<'PY'
+          import subprocess, sys, os
+          anterior = subprocess.run(
+              ["git", "cat-file", "-s", "HEAD:fitosanitarios_mapa.db"],
+              capture_output=True, text=True)
+          if anterior.returncode != 0:
+              print("No hay versión anterior con la que comparar; se continúa.")
+              sys.exit(0)
+          antes = int(anterior.stdout.strip())
+          ahora = os.path.getsize("fitosanitarios_mapa.db")
+          print(f"antes {antes} bytes, ahora {ahora} bytes")
+          if ahora < antes * 0.9:
+              sys.exit(f"La base ha perdido más del 10 %. No se publica.")
+          PY
+
+      - name: 💾 Guardar los cambios
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          # Solo la base. Los PDF no se suben: `enriquecer_fichas.py` los borra
+          # según los procesa y `cache_pdfs/` está en el .gitignore.
+          git add fitosanitarios_mapa.db
+          git commit -m "📄 Fichas PDF del MAPA: $(date -u +'%Y-%m-%d %H:%M UTC')" \
+            || echo "No hubo fichas nuevas ni cambiadas."
+          git pull --rebase --autostash
+          git push

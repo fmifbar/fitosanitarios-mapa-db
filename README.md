@@ -94,11 +94,81 @@ Documentación Swagger interactiva: `http://localhost:8000/docs`.
 
 ---
 
+## 📄 Fichas PDF: lo que el JSON del Ministerio no trae
+
+El JSON nacional da el catálogo y los usos. **Lo demás solo está en el PDF de cada
+ficha**: los EPIs del aplicador, el plazo de reentrada, las bandas de seguridad SPe3,
+el aviso de abejas SPe8, los pictogramas y las frases H y P.
+
+### Qué estaba pasando (corregido el 02/10/2026)
+
+El paso de PDF estaba escrito (`descargador_fichas_mapa.py`, `enriquecer_desde_pdfs.py`)
+pero **no corría nunca**, por dos motivos a la vez:
+
+1. El workflow diario solo llamaba a `sincronizar_servidor.py`.
+2. `cache_pdfs/` está en el `.gitignore` y el runner arranca limpio, así que aunque
+   lo hubiera llamado habría encontrado cero PDF.
+
+Con lo cual `mapa_seguridad`, `mapa_toxicologia` y `mapa_mitigaciones` llevaban
+congeladas desde el principio. Y una tabla congelada es peor que una vacía: se
+consulta igual y responde igual.
+
+### La cadena nueva
+
+```
+catálogo oficial (JSON)
+        ↓
+enriquecer_fichas.py     incremental y con tope: solo las que faltan o han cambiado
+        ↓
+extractor_posicional.py  lee el PDF por POSICIÓN y COLOR, no como texto corrido
+        ↓
+adaptador_canonico.py    traduce al contrato de las 8 tablas
+        ↓
+etl_ingesta_mapa.py      carga en fitosanitarios_mapa.db
+```
+
+| Archivo | Qué hace |
+|---|---|
+| `extractor_posicional.py` | Lee la ficha por posición y color. **2.049 de 2.080 bien (98,5 %)** |
+| `adaptador_canonico.py` | De la ficha a las ocho tablas |
+| `enriquecer_fichas.py` | Orquesta: elige, descarga con pausa, extrae, carga |
+| `test_adaptador_canonico.py` | 22 pruebas del contrato |
+| `comprobar_cadena_completa.py` | Pasa un lote real por la cadena y cuenta qué ha entrado |
+
+Medido sobre las 2.080 fichas: **0 excepciones**, 28.212 usos, 4.519 plazos, 6.214
+mitigaciones, 2.075 filas de seguridad y 2.080 de toxicología.
+
+### Por qué semanal y con tope, y no diario y entero
+
+Las fichas cambian poco; lo que cambia a diario es el estado del registro, y de eso
+ya se encarga el flujo diario leyendo el JSON. Bajar 2.080 PDF cada noche para que
+2.070 salgan idénticos no es diligencia, es ruido sobre un servidor público.
+
+Con 300 por pasada y una pasada semanal el catálogo se completa en unas siete
+semanas, y después solo se tocan las que cambien.
+
+```bash
+python enriquecer_fichas.py --tope 300 --espera 1.0
+```
+
+### Dos cosas que conviene saber al leer estos datos
+
+- **Lo que no se ha leído está en `NULL`, nunca en `0` ni en `""`.** Un plazo de
+  reentrada vacío no significa que se pueda entrar ya.
+- **Lo deducido va marcado como deducido.** En las fichas antiguas no existe el campo
+  «Sistema de Cultivo»; lo que se saca del texto de condiciones es una interpretación,
+  y así lo dice el propio campo.
+
+---
+
 ## 🤖 Automatización en GitHub Actions
 
-El flujo `.github/workflows/actualizar_fitosanitarios.yml` se ejecuta:
-- **Programado:** Cada lunes a las 04:00 AM UTC.
-- **Manual:** Desde la pestaña **Actions** > **Sincronizar Fitosanitarios MAPA** > **Run workflow**.
+| Flujo | Cuándo | Qué hace |
+|---|---|---|
+| `actualizar_fitosanitarios.yml` | Diario, 04:00 UTC | Catálogo y usos desde el JSON del MAPA |
+| `actualizar_fichas_pdf.yml` | Domingos, 05:00 UTC | Fichas PDF que falten, hasta 300 por pasada |
+
+Los dos se pueden lanzar a mano desde **Actions** > el flujo > **Run workflow**.
 
 ---
 
