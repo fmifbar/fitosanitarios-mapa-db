@@ -140,10 +140,11 @@ mitigaciones, 2.075 filas de seguridad y 2.080 de toxicología.
 
 ### Por qué semanal, y por qué completo
 
-**Semanal porque el Ministerio publica una vez por semana.** Lo dice su propia web:
-*«esta base de datos se actualizará semanalmente»*, y la última actualización cuando
-se escribió esto era del lunes 28/09/2026 a las 11:24. Pedirlas más a menudo es
-bajarse lo mismo varias veces.
+**Semanal porque el Ministerio publica una vez por semana, los viernes.** Lo dice su
+propia web, literal: *«Esta base de datos se actualiza semanalmente, los viernes a
+partir de las 14 horas»*. Pedirlas más a menudo es bajarse lo mismo varias veces; y
+el día importa, porque recogerlas en otro momento de la semana deja el catálogo
+siempre una publicación por detrás.
 
 **Completo, y no por tandas, porque una ficha puede cambiar sin cambiar de estado.**
 En la comparación del 02/10/2026 sobre 50 fichas, la única que había cambiado en dos
@@ -168,10 +169,9 @@ python enriquecer_fichas.py              # todas
 python enriquecer_fichas.py --tope 5     # para probar
 ```
 
-El flujo corre **los domingos**, de modo que el lunes el técnico tenga la ficha de
-cada producto. Nótese que el Ministerio publica **los lunes**, así que lo que se
-recoge el domingo es la publicación del lunes anterior —que es la vigente hasta ese
-momento—. Para recoger la del mismo lunes basta con mover el cron a `0 13 * * 1`.
+El flujo corre **los viernes a las 15:00 UTC** (17:00 hora peninsular), tres horas
+después de que el Ministerio publique. Así el lunes el técnico tiene la ficha de cada
+producto con la versión de esa misma semana.
 
 ### Dos cosas que conviene saber al leer estos datos
 
@@ -188,7 +188,11 @@ momento—. Para recoger la del mismo lunes basta con mover el cron a `0 13 * * 
 | Flujo | Cuándo | Qué hace |
 |---|---|---|
 | `actualizar_fitosanitarios.yml` | Diario, 04:00 UTC | Catálogo y usos desde el JSON del MAPA |
-| `actualizar_fichas_pdf.yml` | Domingos, 05:00 UTC | Las 2.081 fichas PDF, barrido completo |
+| `actualizar_fichas_pdf.yml` | Viernes, 15:00 UTC | Las 2.081 fichas PDF, barrido completo |
+
+El MAPA publica **los viernes a partir de las 14:00**, así que el flujo de fichas va
+tres horas después. El diario sigue siendo diario porque cuesta poco y así el estado
+de un producto nunca lleva más de 24 h de retraso.
 
 Los dos se pueden lanzar a mano desde **Actions** > el flujo > **Run workflow**.
 

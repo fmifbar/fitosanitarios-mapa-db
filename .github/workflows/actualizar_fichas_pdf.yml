@@ -28,18 +28,25 @@ name: Fichas PDF del MAPA (semanal, completo)
 # condicionales (sin ETag ni Last-Modified), pero si el SHA-256 coincide con el
 # guardado no se extrae ni se escribe: la base apenas se mueve.
 #
-# HORARIO: el domingo deja al técnico con todo listo el lunes por la mañana.
-# Téngase en cuenta que el Ministerio publica **los lunes** (la última cuando
-# se escribió esto fue el lunes 28/09 a las 11:24), así que lo que se recoge el
-# domingo es la publicación del lunes anterior, que es la vigente hasta
-# entonces. Si algún día se quiere la del mismo lunes, basta con mover el cron
-# a '0 13 * * 1' (lunes 15:00 hora de aquí, ya publicada).
+# HORARIO: EL MINISTERIO PUBLICA LOS VIERNES A PARTIR DE LAS 14:00
+# -----------------------------------------------------------------
+# Lo dice su web, literal: «Esta base de datos se actualiza semanalmente, los
+# viernes a partir de las 14 horas».
+#
+# Por eso esto corre el **viernes a las 17:00 hora de aquí** (15:00 UTC), tres
+# horas después de la publicación: margen de sobra para que hayan terminado de
+# volcar, y el lunes el técnico tiene la ficha de cada producto con la versión
+# de esa misma semana.
+#
+# Se intentó primero el domingo, pensando en que el lunes estuviera listo. Pero
+# el domingo recoge la publicación del viernes **anterior**: se iría siempre una
+# semana por detrás sin ninguna ganancia.
 
 on:
   schedule:
-    # Domingos a las 05:00 UTC (07:00 aquí), una hora después del diario para
-    # no solaparse. El lunes el técnico tiene la ficha de cada producto.
-    - cron: '0 5 * * 0'
+    # Viernes a las 15:00 UTC (17:00 aquí), tres horas después de que el
+    # Ministerio publique. El lunes el técnico tiene la ficha de esa semana.
+    - cron: '0 15 * * 5'
   workflow_dispatch:
     inputs:
       tope:
