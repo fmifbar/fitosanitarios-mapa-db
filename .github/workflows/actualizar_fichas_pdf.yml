@@ -33,6 +33,14 @@ name: Fichas PDF del MAPA (semanal, completo)
 # La web del Registro lo dice así: «Esta base de datos se actualiza
 # semanalmente, los viernes a partir de las 14 horas».
 #
+# MATIZ MEDIDO EL 02/10/2026: eso vale para las **fichas**, que cambian muy
+# despacio (de 50 comparadas entre el 18/09 y el 02/10, solo una, y solo la
+# fecha de caducidad). Pero el JSON del catalogo **no** cambia solo los
+# viernes: comparando las fotos diarias, el cambio aparecio el martes 29/09,
+# o sea que el Ministerio toco los datos el lunes 28. Por eso el flujo del
+# catalogo sigue siendo diario y solo este es semanal.
+# Se puede volver a medir con `comparar_dias_del_catalogo.py`.
+#
 #     viernes 14:00  ->  el MAPA publica
 #     sábado             (dos días para que terminen de volcar)
 #     domingo 05:00  ->  se recoge entero
@@ -98,6 +106,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: ⬇️ Traerse el catálogo de la Release
+        # El `.db` ya no va en el repositorio, y el runner arranca limpio. Sin
+        # esto se empezaría con una base vacía: el barrido no sabría qué
+        # fichas ya tiene y el SHA-256 no podría ahorrar nada.
+        run: |
+          python descargar_catalogo.py --solo fitosanitarios_mapa.db
+
       - name: 📄 Extraer las fichas (barrido completo)
         env:
           # Sin esto, Python no escribe a una terminal y se guarda toda la
@@ -126,6 +141,33 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           python comprobar_antes_de_publicar.py
+
+      - name: 🔁 Rehacer el JSON con las fichas dentro
+        # El barrido escribe en la base, no en el JSON. Sin esto, el JSON de
+        # la Release se quedaría sin las fichas del domingo hasta la
+        # sincronización del lunes.
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python -c "from pathlib import Path; from exportar_a_json import exportar_base_de_datos_a_json; exportar_base_de_datos_a_json(db_path=Path('fitosanitarios_mapa.db'), json_salida=Path('fitosanitarios_mapa_completo.json'))"
+
+      - name: 📦 Actualizar la Release «ultimo»
+        # IMPRESCINDIBLE. La sincronización diaria se baja el catálogo de
+        # «ultimo» para seguir trabajando sobre él. Si el barrido del domingo
+        # no actualizara esa Release, el lunes se descargaría la versión del
+        # sábado y **las 36 minutos de extracción de fichas se perderían**,
+        # cada semana, sin que nadie lo notara.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete ultimo --yes --cleanup-tag 2>/dev/null || true
+          gh release create ultimo \
+            fitosanitarios_mapa.db fitosanitarios_mapa_completo.json estado.json \
+            --title "Catálogo al día" \
+            --notes "Catálogo con las fichas PDF al día: $(date -u +'%Y-%m-%d %H:%M UTC').
+
+          El Ministerio publica semanalmente, los viernes a partir de las 14:00.
+          Los recuentos están en \`estado.json\`."
 
       - name: 🗄️ Guardar la foto fechada de la semana
         # EL ARCHIVO FECHADO, A PROPÓSITO Y NO POR ACCIDENTE
@@ -163,7 +205,8 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           # Los PDF no se suben: `enriquecer_fichas.py` los borra según los
           # procesa y `cache_pdfs/` está en el .gitignore.
-          git add fitosanitarios_mapa.db estado.json
+          # Solo estado.json: el catalogo va en la Release.
+          git add estado.json
           # El mensaje dice si la pasada quedó a medias. Un commit que parece
           # completo y no lo es hace creer que el catálogo está al día.
           if grep -q "Agotado el margen" salida_fichas.log; then

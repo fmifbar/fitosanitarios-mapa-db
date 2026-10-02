@@ -265,14 +265,32 @@ Cualquier código que no sea una de esas tres letras se guarda **tal y como vien
 | Los recuentos | `.../releases/latest/download/estado.json` |
 | Foto de una semana | `.../releases/download/catalogo-AAAA-MM-DD/...` |
 
-Los archivos van en **Releases** porque la base y el JSON suman 118 MB y se
+**La base y el JSON ya no están en el repositorio.** Suman unos 120 MB y se
 reescriben enteros cada vez que cambian: son binarios y git no puede guardar solo la
 diferencia, así que el repositorio engordaba ~6,6 MB al día —unos 2,4 GB al año— para
-publicar los mismos datos. Las Releases los guardan fuera del historial.
+publicar los mismos datos una y otra vez. Las Releases los guardan fuera del
+historial.
 
-**Siguen subiéndose también al repositorio, de momento.** Primero que las Releases
-funcionen y que TT EDITOR las use; dejar de subirlos es el paso irreversible y va
-después, no a la vez.
+Para traértelos:
+
+```bash
+python descargar_catalogo.py                            # el último
+python descargar_catalogo.py --version catalogo-2026-10-04   # una semana concreta
+```
+
+Comprueba lo que baja antes de dejarlo en su sitio: que abra, que tenga las tablas y
+cuántos productos trae. Una descarga cortada no sustituye a la que hubiera.
+
+`estado.json` **sí** se sigue subiendo: pesa nada y es lo que permite ver de un
+vistazo cómo fue cada sincronización —y comparar con la anterior— sin descargar
+120 MB.
+
+> Comprobado el 02/10/2026 contra el repositorio real antes de quitarlos: la Release
+> se crea con los tres archivos, la dirección estable responde, y TT EDITOR se baja
+> los 42 MB en 2,4 s tirando de la Release sin usar el respaldo.
+>
+> Quitarlos frena el crecimiento de aquí en adelante; **no encoge el historial que ya
+> existe**. Eso exigiría reescribirlo, y es una decisión aparte.
 
 ### El archivo fechado
 
@@ -296,9 +314,30 @@ respondía a medias, se publicaba un catálogo con la mitad de los productos. **
 catálogo recortado no es uno viejo**: uno viejo dice cosas de la semana pasada, uno
 recortado dice que no existe lo que sí existe.
 
-El MAPA publica **los viernes a partir de las 14:00**, y el flujo de fichas recoge el
-domingo, cuando ya han terminado. El diario sigue siendo diario porque cuesta poco y
-así el estado de un producto nunca lleva más de 24 h de retraso.
+### Por qué uno diario y otro semanal
+
+La web del Registro dice que el Ministerio actualiza *«semanalmente, los viernes a
+partir de las 14 horas»*. **Pero el JSON que consumimos no se comporta así.**
+Comparando las fotos diarias del catálogo —la huella de estados y usos, ignorando
+marcas de tiempo— con `comparar_dias_del_catalogo.py`:
+
+```
+vie 18/09 … lun 28/09    idénticos        62.616 usos
+mar 29/09 en adelante    CAMBIÓ           62.629 usos
+```
+
+Diez días sin moverse y después un cambio que aparece el **martes**: el Ministerio
+tocó los datos el lunes 28, no un viernes. Lo de los viernes se refiere a la base
+descargable; el JSON va por su cuenta.
+
+De ahí el reparto:
+
+- **El diario** cuesta una descarga y unos segundos de proceso, y es lo que mantiene
+  el estado de un producto con menos de 24 h de retraso. Barato, y el cambio puede
+  caer cualquier día.
+- **El semanal** son 2.081 PDF y media hora. Eso sí se hace una vez por semana,
+  porque las fichas cambian mucho más despacio: de 50 comparadas entre el 18/09 y el
+  02/10, solo una había cambiado, y solo la fecha de caducidad.
 
 Los dos se pueden lanzar a mano desde **Actions** > el flujo > **Run workflow**.
 

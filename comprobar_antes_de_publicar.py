@@ -93,24 +93,27 @@ def _contar(ruta: Path) -> dict:
 
 
 def _version_anterior(nombre: str) -> dict | None:
-    """Los recuentos de la versión que ya está publicada, si se pueden leer."""
+    """
+    Los recuentos de la version ya publicada, sacados de `estado.json`.
+
+    Antes esto extraia el `.db` anterior del historial de git y lo contaba.
+    Desde el 02/10/2026 el `.db` **ya no va en el repositorio** —vive en la
+    Release, fuera del historial— asi que ahi no hay nada que extraer.
+
+    Y da igual, porque `estado.json` ya lleva esos recuentos, pesa dos kilos
+    en vez de cuarenta megas y **si** sigue en el historial: se puede mirar
+    como estaba el catalogo cualquier dia pasado sin descargar nada.
+    """
     try:
-        bruto = subprocess.run(["git", "show", f"HEAD:{nombre}"],
-                               capture_output=True, cwd=BASE)
-        if bruto.returncode != 0 or not bruto.stdout:
+        bruto = subprocess.run(["git", "show", "HEAD:estado.json"],
+                               capture_output=True, text=True, cwd=BASE,
+                               encoding="utf-8", errors="ignore")
+        if bruto.returncode != 0 or not bruto.stdout.strip():
             return None
-        tmp = BASE / ".anterior.tmp.db"
-        tmp.write_bytes(bruto.stdout)
-        try:
-            return _contar(tmp)
-        finally:
-            # SQLite deja también `-wal` y `-shm` al abrir. Borrar solo el
-            # `.db` dejaba dos archivos sueltos en el repositorio después de
-            # cada comprobación.
-            for sufijo in ("", "-wal", "-shm"):
-                Path(str(tmp) + sufijo).unlink(missing_ok=True)
+        filas = json.loads(bruto.stdout).get("filas")
+        return filas if isinstance(filas, dict) and filas else None
     except Exception as e:
-        print(f"[i] No se pudo leer la versión anterior ({e}). Se continúa.")
+        print(f"[i] No se pudo leer la version anterior ({e}). Se continua.")
         return None
 
 
@@ -145,7 +148,10 @@ def _estado_json(ruta: Path, ahora: dict, antes: dict | None, json_path: Path):
         "generado": datetime.datetime.now(datetime.timezone.utc)
                     .isoformat(timespec="seconds"),
         "origen": "Registro Oficial de Productos Fitosanitarios (MAPA)",
-        "el_mapa_publica": "semanalmente, los viernes a partir de las 14:00",
+        # Lo que dice su web y lo que se ha medido, que no coinciden del todo.
+        "el_mapa_dice_que_publica": "semanalmente, los viernes a partir de las 14:00",
+        "medido_el_02_10_2026": ("el JSON cambio el lunes 28/09, no un viernes; "
+                                 "del 18/09 al 28/09 no cambio nada"),
         "ultima_sincronizacion_en_la_base": sincronizado,
         "filas": ahora,
         "productos_vigentes": vigentes,

@@ -25,3 +25,20 @@ salida_fichas.log
 # SQLite deja estos al trabajar en modo WAL; lo que se publica es el .db
 *.db-wal
 *.db-shm
+
+# ---------------------------------------------------------------------------
+# EL CATALOGO NO VA EN EL REPOSITORIO (02/10/2026)
+# ---------------------------------------------------------------------------
+# Suman ~120 MB y se reescriben enteros cada vez que cambian: son binarios y
+# git no puede guardar solo la diferencia. Medido: ~6,6 MB al dia, ~2,4 GB al
+# año, publicando una y otra vez los mismos datos.
+#
+# Se publican como Release, que vive fuera del historial:
+#   .../releases/latest/download/fitosanitarios_mapa.db
+#
+# Para traerselos:  python descargar_catalogo.py
+#
+# `estado.json` SI se sube: pesa nada y es lo que permite ver de un vistazo
+# como fue cada sincronizacion sin descargar 120 MB.
+fitosanitarios_mapa.db
+fitosanitarios_mapa_completo.json

@@ -31,6 +31,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: ⬇️ Traerse el catálogo de la Release
+        # IMPRESCINDIBLE desde que el `.db` no va en el repositorio.
+        # El runner arranca con un clon limpio, así que sin esto empezaría con
+        # una base vacía y la reconstruiría desde cero cada noche: se perderían
+        # las fichas PDF (EPIs, reentrada, abejas, pictogramas), que solo se
+        # rellenan los domingos y tardan 36 minutos en extraerse.
+        run: |
+          python descargar_catalogo.py --solo fitosanitarios_mapa.db
+
       - name: 🌾 Ejecutar sincronización con el Ministerio (MAPA)
         env:
           # Sin esto Python se guarda la salida en el buffer y la pantalla
@@ -69,9 +78,11 @@ jobs:
         #
         #   .../releases/latest/download/fitosanitarios_mapa.db
         #
-        # Esto se añade **sin dejar de hacer el commit**. Primero que funcione
-        # y que TT EDITOR lo use; dejar de subir los archivos es el paso
-        # irreversible y va después, no a la vez.
+        # Comprobado el 02/10/2026 contra el repositorio real: la Release se
+        # crea con los tres archivos, la dirección estable responde, y
+        # TT EDITOR se baja los 42 MB en 2,4 s **tirando de la Release y sin
+        # usar el respaldo**. Por eso los archivos grandes ya no se suben al
+        # repositorio; solo `estado.json`, que pesa nada.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -93,7 +104,10 @@ jobs:
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git add fitosanitarios_mapa.db fitosanitarios_mapa_completo.json estado.json
+          # Solo estado.json: el catalogo va en la Release, que vive fuera
+          # del historial. Subirlo tambien aqui era lo que engordaba el
+          # repositorio 6,6 MB al dia.
+          git add estado.json
           git commit -m "🤖 Actualización automática MAPA: $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No hubo cambios en el registro oficial."
           git pull --rebase --autostash
           git push
