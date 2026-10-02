@@ -241,10 +241,27 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
         seg = datos.get("seguridad", {})
         if any(seg.values()):
             cursor.execute("""
-                INSERT OR REPLACE INTO mapa_seguridad (
+                -- NUNCA BORRAR LO QUE YA HABIA CON UN VACIO (02/10/2026)
+                -- Esto era `INSERT OR REPLACE`, que sustituye la fila entera.
+                -- Hay dos lectores distintos de la misma ficha (el motor
+                -- canonico y el extractor posicional) y cada uno acierta en
+                -- cosas distintas. Con REPLACE, el que corriera el ultimo
+                -- borraba lo que el otro si habia sabido leer: en la primera
+                -- pasada del extractor se perdieron 57 textos de EPIs del
+                -- aplicador que ya estaban.
+                -- Lo que vale es la union: lo nuevo gana cuando trae algo, y
+                -- lo viejo se queda cuando lo nuevo viene vacio.
+                INSERT INTO mapa_seguridad (
                     producto_id, seguridad_aplicador, seguridad_trabajador, plazo_reentrada,
                     frases_reduccion_riesgo, bandas_seguridad_spe3, polinizadores_spe8
-                ) VALUES (?, ?, ?, ?, ?, ?, ?);
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(producto_id) DO UPDATE SET
+                    seguridad_aplicador     = COALESCE(NULLIF(excluded.seguridad_aplicador, ''),     seguridad_aplicador),
+                    seguridad_trabajador    = COALESCE(NULLIF(excluded.seguridad_trabajador, ''),    seguridad_trabajador),
+                    plazo_reentrada         = COALESCE(NULLIF(excluded.plazo_reentrada, ''),         plazo_reentrada),
+                    frases_reduccion_riesgo = COALESCE(NULLIF(excluded.frases_reduccion_riesgo, ''), frases_reduccion_riesgo),
+                    bandas_seguridad_spe3   = COALESCE(NULLIF(excluded.bandas_seguridad_spe3, ''),   bandas_seguridad_spe3),
+                    polinizadores_spe8      = COALESCE(NULLIF(excluded.polinizadores_spe8, ''),      polinizadores_spe8);
             """, (
                 producto_id,
                 seg.get("seguridad_aplicador", ""),
@@ -259,10 +276,20 @@ def cargar_producto_en_bd(datos: Dict[str, Any], ruta_archivo: str, db_path: Pat
         tox = datos.get("toxicologia", {})
         if any(tox.values()):
             cursor.execute("""
-                INSERT OR REPLACE INTO mapa_toxicologia (
+                -- Mismo criterio que en mapa_seguridad: la union, no el ultimo
+                -- que escriba. Un pictograma que ya se habia leido no se borra
+                -- porque esta vez no se haya sabido leer.
+                INSERT INTO mapa_toxicologia (
                     producto_id, palabra_advertencia, pictogramas_ghs, indicaciones_h, consejos_p,
                     incompatibilidades_mezclas, gestion_envases
-                ) VALUES (?, ?, ?, ?, ?, ?, ?);
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(producto_id) DO UPDATE SET
+                    palabra_advertencia        = COALESCE(NULLIF(excluded.palabra_advertencia, ''),        palabra_advertencia),
+                    pictogramas_ghs            = COALESCE(NULLIF(excluded.pictogramas_ghs, ''),            pictogramas_ghs),
+                    indicaciones_h             = COALESCE(NULLIF(excluded.indicaciones_h, ''),             indicaciones_h),
+                    consejos_p                 = COALESCE(NULLIF(excluded.consejos_p, ''),                 consejos_p),
+                    incompatibilidades_mezclas = COALESCE(NULLIF(excluded.incompatibilidades_mezclas, ''), incompatibilidades_mezclas),
+                    gestion_envases            = COALESCE(NULLIF(excluded.gestion_envases, ''),            gestion_envases);
             """, (
                 producto_id,
                 tox.get("palabra_advertencia", ""),
