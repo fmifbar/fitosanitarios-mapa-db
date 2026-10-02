@@ -28,25 +28,34 @@ name: Fichas PDF del MAPA (semanal, completo)
 # condicionales (sin ETag ni Last-Modified), pero si el SHA-256 coincide con el
 # guardado no se extrae ni se escribe: la base apenas se mueve.
 #
-# HORARIO: EL MINISTERIO PUBLICA LOS VIERNES A PARTIR DE LAS 14:00
-# -----------------------------------------------------------------
-# Lo dice su web, literal: «Esta base de datos se actualiza semanalmente, los
-# viernes a partir de las 14 horas».
+# HORARIO: EL MINISTERIO PUBLICA EL VIERNES, NOSOTROS RECOGEMOS EL DOMINGO
+# -------------------------------------------------------------------------
+# La web del Registro lo dice así: «Esta base de datos se actualiza
+# semanalmente, los viernes a partir de las 14 horas».
 #
-# Por eso esto corre el **viernes a las 17:00 hora de aquí** (15:00 UTC), tres
-# horas después de la publicación: margen de sobra para que hayan terminado de
-# volcar, y el lunes el técnico tiene la ficha de cada producto con la versión
-# de esa misma semana.
+#     viernes 14:00  ->  el MAPA publica
+#     sábado             (dos días para que terminen de volcar)
+#     domingo 05:00  ->  se recoge entero
+#     lunes          ->  el técnico tiene la ficha de cada producto
 #
-# Se intentó primero el domingo, pensando en que el lunes estuviera listo. Pero
-# el domingo recoge la publicación del viernes **anterior**: se iría siempre una
-# semana por detrás sin ninguna ganancia.
+# El domingo y no el viernes por la tarde, y el motivo está en «**a partir
+# de** las 14 horas»: no es «a las 14:00». La publicación puede alargarse, y
+# entrar el mismo viernes arriesga pillarles a medio volcar y guardarse un
+# catálogo incompleto. El domingo llevan dos días terminados.
+#
+# El retraso que eso introduce es de dos días sobre la publicación, no de una
+# semana: el domingo es posterior al viernes de la misma semana. Y el estado
+# de un producto —si lo han cancelado— no espera a esto: de eso se encarga el
+# flujo diario, que lo recoge en menos de 24 h.
+#
+# Además el domingo no trabaja nadie, ni aquí ni tirando del servidor del
+# Ministerio, que es público.
 
 on:
   schedule:
-    # Viernes a las 15:00 UTC (17:00 aquí), tres horas después de que el
-    # Ministerio publique. El lunes el técnico tiene la ficha de esa semana.
-    - cron: '0 15 * * 5'
+    # Domingos a las 05:00 UTC (07:00 aquí). El lunes el técnico tiene la
+    # ficha de cada producto con la publicación del viernes anterior.
+    - cron: '0 5 * * 0'
   workflow_dispatch:
     inputs:
       tope:
@@ -90,11 +99,23 @@ jobs:
           pip install -r requirements.txt
 
       - name: 📄 Extraer las fichas (barrido completo)
+        env:
+          # Sin esto, Python no escribe a una terminal y se guarda toda la
+          # salida en el buffer hasta el final. En una tarea de 25 minutos eso
+          # deja la pantalla en blanco todo el rato y no hay forma de
+          # distinguir una que va bien de una colgada, que es justo cuando
+          # hace falta saberlo. Pasó en la primera ejecución, el 02/10/2026.
+          PYTHONUNBUFFERED: "1"
         run: |
+          # --minutos 90 hace que la pasada pare por las buenas antes de que
+          # el timeout del job (120) la mate. Si la mata GitHub, los pasos
+          # siguientes NO corren y se pierde todo lo procesado.
           python enriquecer_fichas.py \
             --tope "${{ github.event.inputs.tope || '0' }}" \
             --espera 0.3 \
-            ${{ github.event.inputs.forzar == 'sí' && '--forzar' || '' }}
+            --minutos 90 \
+            ${{ github.event.inputs.forzar == 'sí' && '--forzar' || '' }} \
+            | tee salida_fichas.log
 
       - name: 🔎 Comprobar que la base no ha menguado
         # La misma idea que la regla del 90 % para el catálogo: si una pasada
@@ -123,7 +144,14 @@ jobs:
           # Solo la base. Los PDF no se suben: `enriquecer_fichas.py` los borra
           # según los procesa y `cache_pdfs/` está en el .gitignore.
           git add fitosanitarios_mapa.db
-          git commit -m "📄 Fichas PDF del MAPA: $(date -u +'%Y-%m-%d %H:%M UTC')" \
+          # El mensaje dice si la pasada quedó a medias. Un commit que parece
+          # completo y no lo es hace creer que el catálogo está al día.
+          if grep -q "Agotado el margen" salida_fichas.log; then
+            AVISO=" (PASADA INCOMPLETA: se agotó el margen de tiempo)"
+          else
+            AVISO=""
+          fi
+          git commit -m "📄 Fichas PDF del MAPA: $(date -u +'%Y-%m-%d %H:%M UTC')${AVISO}" \
             || echo "No hubo fichas nuevas ni cambiadas."
           git pull --rebase --autostash
           git push

@@ -28,7 +28,13 @@ Uso:
 import hashlib, json, os, re, sys, datetime, unicodedata
 from collections import defaultdict
 
-import fitz  # PyMuPDF
+try:
+    # El nombre nuevo. `import fitz` sigue funcionando pero avisa de que está
+    # obsoleto en cada ejecución, y un aviso que sale siempre acaba siendo un
+    # aviso que nadie lee.
+    import pymupdf as fitz
+except ImportError:                      # PyMuPDF anterior a la 1.24.3
+    import fitz
 
 AZUL, VERDE, MARRON, ETIQUETA, VALOR = 0x154480, 0x006400, 0x8B4513, 0x000080, 0x696969
 VERSION = "1.1 (02/10/2026)"

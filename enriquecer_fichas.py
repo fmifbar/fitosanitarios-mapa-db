@@ -86,6 +86,27 @@ ESPERA_ENTRE_DESCARGAS = 0.3
 # devuelta con código 200, que el Ministerio hace a veces.
 TAMANO_MINIMO_PDF = 15_000
 
+# Minutos que se concede la pasada antes de recoger y salir **bien**.
+#
+# POR QUÉ ESTE FRENO, SI EL WORKFLOW YA TIENE UN LÍMITE
+# ------------------------------------------------------
+# Porque hacen cosas opuestas. Cuando salta el `timeout-minutes` de GitHub,
+# **mata el trabajo y los pasos siguientes no se ejecutan**: ni la comprobación
+# de que la base no ha menguado, ni el commit. Todo lo procesado se tira.
+#
+# Y como la base no avanza, la semana siguiente se empieza igual que esta: si
+# una semana no da tiempo, **no da tiempo nunca**, y falla todos los viernes en
+# silencio. Un fallo que se repite sin que nadie lo vea es peor que uno ruidoso.
+#
+# Con este freno la pasada para sola antes de tiempo, dice hasta dónde llegó, y
+# los pasos siguientes **sí corren**: se publica lo hecho. Como `elegir()` pone
+# delante las que nunca se han extraído y después las más antiguas, la pasada
+# siguiente continúa por donde se quedó. Dos pasadas a medias terminan el
+# trabajo; una matada no deja nada.
+#
+# El límite del workflow se queda de red, por si algo se atasca de verdad.
+MINUTOS_DE_MARGEN = 90
+
 
 def _estado_guardado(db_path: Path) -> Dict[str, Dict[str, Any]]:
     """{num_registro: {estado, sha, cuando}} de lo que ya hay en la base."""
@@ -148,27 +169,44 @@ def _bajar(client: httpx.Client, id_producto: Any, destino: Path) -> bool:
 
 
 def enriquecer(tope: int = TOPE_POR_PASADA, espera: float = ESPERA_ENTRE_DESCARGAS,
-               forzar: bool = False, db_path: Path = DB_DEFAULT) -> Dict[str, int]:
+               forzar: bool = False, db_path: Path = DB_DEFAULT,
+               minutos: float = MINUTOS_DE_MARGEN) -> Dict[str, int]:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    arranque = time.monotonic()
+    limite = minutos * 60 if minutos and minutos > 0 else None
 
     catalogo = obtener_catalogo_oficial_mapa()
     guardado = _estado_guardado(db_path)
     pendientes = elegir(catalogo, guardado, tope, forzar)
 
-    print("=" * 70)
+    print("=" * 70, flush=True)
     print("FICHAS PDF DEL MAPA - " + ("barrido completo" if tope <= 0 else f"pasada de {tope}"))
     print(f"  catálogo oficial:        {len(catalogo)}")
     print(f"  ya extraídas:            {sum(1 for v in guardado.values() if v.get('sha'))}")
     print(f"  en esta pasada:          {len(pendientes)}")
     print(f"  espera entre descargas:  {espera}s")
     print(f"  tiempo estimado:         ~{len(pendientes) * (espera + 0.45) / 60:.0f} min")
-    print("=" * 70)
+    print(f"  margen antes de parar:   {minutos:.0f} min" if limite else "  sin margen de tiempo")
+    print("=" * 70, flush=True)
 
-    r = {"intentadas": 0, "cargadas": 0, "sin_cambios": 0, "no_bajadas": 0, "con_error": 0}
+    r = {"intentadas": 0, "cargadas": 0, "sin_cambios": 0, "no_bajadas": 0,
+         "con_error": 0, "sin_llegar": 0, "parada_por_tiempo": False}
     headers = {"User-Agent": "fitosanitarios-mapa-db (Murgiverde S.C.A.)"}
 
     with httpx.Client(headers=headers, timeout=60.0, follow_redirects=True, verify=False) as client:
         for i, p in enumerate(pendientes, 1):
+            # Parar por las buenas antes de que GitHub mate el trabajo. Lo
+            # hecho hasta aquí ya está en la base y se publica; la pasada
+            # siguiente continúa por donde se quedó.
+            if limite and (time.monotonic() - arranque) > limite:
+                r["parada_por_tiempo"] = True
+                r["sin_llegar"] = len(pendientes) - i + 1
+                print(f"\n[!] Agotado el margen de {minutos:.0f} min en la ficha "
+                      f"{i} de {len(pendientes)}. Se guarda lo hecho y se sale "
+                      f"bien; quedan {r['sin_llegar']} para la próxima pasada.",
+                      flush=True)
+                break
+
             reg = p["num_registro"]
             r["intentadas"] += 1
             pdf = CACHE_DIR / f"Ficha_{reg}.pdf"
@@ -202,15 +240,20 @@ def enriquecer(tope: int = TOPE_POR_PASADA, espera: float = ESPERA_ENTRE_DESCARG
             if i % 25 == 0 or i == len(pendientes):
                 print(f"   {i}/{len(pendientes)} · {r['cargadas']} cargadas, "
                       f"{r['sin_cambios']} sin cambios, {r['no_bajadas']} no bajadas, "
-                      f"{r['con_error']} con error")
+                      f"{r['con_error']} con error", flush=True)
             time.sleep(espera)
 
+    minutos_reales = (time.monotonic() - arranque) / 60
     print("-" * 70)
     print(f"RESULTADO: {r}")
+    print(f"Tiempo: {minutos_reales:.1f} min")
     quedan = sum(1 for p in catalogo
                  if not (guardado.get(p["num_registro"]) or {}).get("sha")) - r["cargadas"]
     print(f"Fichas que siguen sin extraer, aproximadamente: {max(0, quedan)}")
-    print("=" * 70)
+    if r["parada_por_tiempo"]:
+        print("La pasada se cortó por el margen de tiempo. Lo hecho se publica igual "
+              "y la siguiente continúa por donde se quedó.")
+    print("=" * 70, flush=True)
     return r
 
 
@@ -220,7 +263,9 @@ if __name__ == "__main__":
                     help="máximo de fichas por pasada; 0 = todas (lo normal)")
     ap.add_argument("--espera", type=float, default=ESPERA_ENTRE_DESCARGAS,
                     help="segundos entre descargas")
+    ap.add_argument("--minutos", type=float, default=MINUTOS_DE_MARGEN,
+                    help="minutos antes de parar por las buenas; 0 = sin límite")
     ap.add_argument("--forzar", action="store_true",
                     help="rehacer aunque no haya cambiado")
     a = ap.parse_args()
-    enriquecer(tope=a.tope, espera=a.espera, forzar=a.forzar)
+    enriquecer(tope=a.tope, espera=a.espera, forzar=a.forzar, minutos=a.minutos)

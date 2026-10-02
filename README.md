@@ -169,9 +169,23 @@ python enriquecer_fichas.py              # todas
 python enriquecer_fichas.py --tope 5     # para probar
 ```
 
-El flujo corre **los viernes a las 15:00 UTC** (17:00 hora peninsular), tres horas
-después de que el Ministerio publique. Así el lunes el técnico tiene la ficha de cada
-producto con la versión de esa misma semana.
+El flujo corre **los domingos a las 05:00 UTC** (07:00 hora peninsular):
+
+```
+viernes 14:00  →  el MAPA publica
+sábado             (dos días para que terminen de volcar)
+domingo 05:00  →  se recoge entero
+lunes          →  el técnico tiene la ficha de cada producto
+```
+
+El domingo y no el viernes por la tarde porque la web dice «**a partir de** las 14
+horas», que no es «a las 14:00»: la publicación puede alargarse, y entrar el mismo
+viernes arriesga pillarles a medio volcar. El domingo llevan dos días terminados, y
+además no trabaja nadie —ni aquí ni tirando del servidor del Ministerio—.
+
+El retraso es de dos días sobre la publicación. Si lo que se quiere saber es que un
+producto ha sido cancelado, eso no espera a esto: lo recoge el flujo diario en menos
+de 24 h.
 
 ### Dos cosas que conviene saber al leer estos datos
 
@@ -188,11 +202,11 @@ producto con la versión de esa misma semana.
 | Flujo | Cuándo | Qué hace |
 |---|---|---|
 | `actualizar_fitosanitarios.yml` | Diario, 04:00 UTC | Catálogo y usos desde el JSON del MAPA |
-| `actualizar_fichas_pdf.yml` | Viernes, 15:00 UTC | Las 2.081 fichas PDF, barrido completo |
+| `actualizar_fichas_pdf.yml` | Domingos, 05:00 UTC | Las 2.081 fichas PDF, barrido completo |
 
-El MAPA publica **los viernes a partir de las 14:00**, así que el flujo de fichas va
-tres horas después. El diario sigue siendo diario porque cuesta poco y así el estado
-de un producto nunca lleva más de 24 h de retraso.
+El MAPA publica **los viernes a partir de las 14:00**, y el flujo de fichas recoge el
+domingo, cuando ya han terminado. El diario sigue siendo diario porque cuesta poco y
+así el estado de un producto nunca lleva más de 24 h de retraso.
 
 Los dos se pueden lanzar a mano desde **Actions** > el flujo > **Run workflow**.
 
