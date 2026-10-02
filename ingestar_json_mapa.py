@@ -134,6 +134,53 @@ CREATE INDEX IF NOT EXISTS idx_mapa_usos_prod_cultivo ON mapa_usos(producto_id, 
 CREATE INDEX IF NOT EXISTS idx_mapa_plazos_prod ON mapa_plazos_seguridad(producto_id);
 """
 
+
+def _numero(v):
+    """El valor como número, o `None` si no lo hay. Un 0 del MAPA **no es un 0**."""
+    if v in (None, ""):
+        return None
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    # Aquí está el meollo. Cuando un uso no tiene horquilla, el Ministerio pone
+    # la cifra en uno de los dos campos y manda **0** en el otro. Ese 0 quiere
+    # decir «no hay segundo extremo», no «dosis cero».
+    #
+    # Medido el 02/10/2026 sobre los 62.648 usos del registro:
+    #    los dos con valor   49.863   79,6 %
+    #    Dosis_Max = 0        8.803   14,1 %
+    #    Dosis_Min = 0        2.491    4,0 %
+    #    los dos a 0          1.491    2,4 %
+    #
+    # Guardarlo como 0 convierte un hueco en una afirmación: quien después
+    # compare «la dosis no puede pasar de dosis_max» leerá que el máximo
+    # autorizado es cero, y cualquier dosis será un exceso. Un hueco se ve;
+    # un cero que parece un dato, no.
+    return None if n == 0 else n
+
+
+def _dosis_de(u):
+    """(mínimo, máximo, unidad, texto) de un uso del JSON del Ministerio."""
+    d_min = _numero(u.get("Dosis_Min"))
+    d_max = _numero(u.get("Dosis_Max"))
+    unidad = (u.get("Unidad Medida dosis") or "").strip()
+
+    # El texto tiene que leerse como lo que es. «0.2 - 0.0 %» parecía una
+    # horquilla que baja de 0,2 a 0, y era una dosis única de 0,2 %.
+    def recorta(x):
+        return f"{x:g}"
+
+    if d_min is not None and d_max is not None and d_min != d_max:
+        texto = f"{recorta(d_min)} - {recorta(d_max)} {unidad}".strip()
+    elif d_min is not None or d_max is not None:
+        texto = f"{recorta(d_min if d_min is not None else d_max)} {unidad}".strip()
+    else:
+        # Sin cifra. Se dice, en vez de escribir un «0 %» que nadie ha dicho.
+        texto = (u.get("Dosis") or "").strip() or "Sin dosis numérica declarada"
+    return d_min, d_max, unidad, texto
+
+
 def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callback=None):
     if db_path is None:
         db_path = obtener_db_file()
@@ -289,11 +336,7 @@ def descargar_e_ingestar_catalogo_nacional(db_path: Path = None, progreso_callba
         for u in p.get("USOS", []):
             cultivo = u.get("Cultivo", "").strip()
             agente = u.get("Agente", "").strip()
-            d_min = u.get("Dosis_Min")
-            d_max = u.get("Dosis_Max")
-            d_unidad = u.get("Unidad Medida dosis", "").strip()
-            
-            d_orig = f"{d_min} - {d_max} {d_unidad}" if d_min != d_max else f"{d_min} {d_unidad}"
+            d_min, d_max, d_unidad, d_orig = _dosis_de(u)
             ps_texto = str(u.get("Plazo Seguridad", "NO PROCEDE")).strip()
             
             # Normalizar días de plazo
