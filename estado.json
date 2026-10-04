@@ -1,9 +1,9 @@
 {
-  "generado": "2026-10-03T04:16:35+00:00",
+  "generado": "2026-10-04T05:43:33+00:00",
   "origen": "Registro Oficial de Productos Fitosanitarios (MAPA)",
   "el_mapa_dice_que_publica": "semanalmente, los viernes a partir de las 14:00",
   "medido_el_02_10_2026": "el JSON cambio el lunes 28/09, no un viernes; del 18/09 al 28/09 no cambio nada",
-  "ultima_sincronizacion_en_la_base": "2026-10-03 04:16:32",
+  "ultima_sincronizacion_en_la_base": "2026-10-04 05:43:31",
   "filas": {
     "mapa_productos": 2081,
     "mapa_usos": 62645,
@@ -23,10 +23,10 @@
     "json": 78.8
   },
   "variacion_respecto_a_la_anterior": {
-    "mapa_productos": 1,
-    "mapa_usos": 16,
+    "mapa_productos": 0,
+    "mapa_usos": 0,
     "mapa_sustancias_activas": 0,
-    "mapa_producto_composicion": 2,
+    "mapa_producto_composicion": 0,
     "mapa_plazos_seguridad": 0,
     "mapa_seguridad": 0,
     "mapa_toxicologia": 0,
