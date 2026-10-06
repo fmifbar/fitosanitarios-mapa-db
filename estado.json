@@ -1,9 +1,9 @@
 {
-  "generado": "2026-10-05T04:17:05+00:00",
+  "generado": "2026-10-06T04:15:41+00:00",
   "origen": "Registro Oficial de Productos Fitosanitarios (MAPA)",
   "el_mapa_dice_que_publica": "semanalmente, los viernes a partir de las 14:00",
   "medido_el_02_10_2026": "el JSON cambio el lunes 28/09, no un viernes; del 18/09 al 28/09 no cambio nada",
-  "ultima_sincronizacion_en_la_base": "2026-10-05 04:17:02",
+  "ultima_sincronizacion_en_la_base": "2026-10-06 04:15:39",
   "filas": {
     "mapa_productos": 2081,
     "mapa_usos": 62645,
